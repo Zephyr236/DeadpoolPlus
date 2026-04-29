@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math/rand"
 	"net"
 	"os"
 	"os/signal"
@@ -19,11 +18,8 @@ import (
 )
 
 func main() {
-	// 初始化随机种子
-	rand.Seed(time.Now().UnixNano())
-
 	utils.Banner()
-	fmt.Print("By:thinkoaa GitHub:https://github.com/thinkoaa/Deadpool\n\n\n")
+	fmt.Print(utils.ColorCyan + "By:thinkoaa GitHub:https://github.com/thinkoaa/Deadpool\n" + utils.ColorReset + "\n")
 
 	// 解析命令行参数
 	configPath := "config.toml"
@@ -49,19 +45,19 @@ func main() {
 	}
 
 	if help {
-		fmt.Println("Deadpool 代理池工具 使用帮助:")
-		fmt.Println("  -h, --help          显示此帮助信息")
-		fmt.Println("  -c, --config <path> 指定配置文件路径 (默认: config.toml)")
-		fmt.Println("  -l, --lastdata <path> 指定lastdata文件路径 (默认: lastData.txt)")
-		fmt.Println("                      使用此选项时，不会重新从网络空间获取代理")
+		fmt.Println(utils.ColorCyan + "Deadpool 代理池工具 使用帮助:" + utils.ColorReset)
+		fmt.Println(utils.ColorCyan + "  -h, --help          显示此帮助信息" + utils.ColorReset)
+		fmt.Println(utils.ColorCyan + "  -c, --config <path> 指定配置文件路径 (默认: config.toml)" + utils.ColorReset)
+		fmt.Println(utils.ColorCyan + "  -l, --lastdata <path> 指定lastdata文件路径 (默认: lastData.txt)" + utils.ColorReset)
+		fmt.Println(utils.ColorCyan + "                      使用此选项时，不会重新从网络空间获取代理" + utils.ColorReset)
 		os.Exit(0)
 	}
 
 	// 读取配置文件
 	config, err := utils.LoadConfig(configPath)
 	if err != nil {
-		fmt.Printf("配置文件 %s 存在错误: %v\n", configPath, err)
-		fmt.Println("请检查配置文件格式是否正确，参考 README 中的配置说明")
+		fmt.Printf(utils.ColorRed+"配置文件 %s 存在错误: %v\n"+utils.ColorReset, configPath, err)
+		fmt.Println(utils.ColorRed + "请检查配置文件格式是否正确，参考 README 中的配置说明" + utils.ColorReset)
 		os.Exit(1)
 	}
 
@@ -78,19 +74,19 @@ func main() {
 
 	// 从本地文件中取socks代理
 	if utils.LogLevel == "debug" {
-		fmt.Print("***debug模式: 每个请求的代理信息会打印到命令行***\n\n")
+		fmt.Print(utils.ColorCyan + "***debug模式: 每个请求的代理信息会打印到命令行***\n" + utils.ColorReset + "\n")
 	}
-	fmt.Print("***直接使用fmt打印当前使用的代理,若高并发时,命令行打印可能会阻塞，不对打印做特殊处理，可忽略，不会影响实际的请求转发***\n\n")
+	fmt.Print(utils.ColorYellow + "***直接使用fmt打印信息，基本上是打印异常的信息***\n" + utils.ColorReset + "\n")
 	if lastDataPath == utils.LastDataFile {
 		// 未指定自定义lastdata路径时，从网络空间获取代理
 		utils.GetSocks(config)
 	}
 
 	if len(utils.SocksList) == 0 {
-		fmt.Println("未发现代理数据,请调整配置信息,或向" + utils.LastDataFile + "中直接写入IP:PORT格式的socks5代理\n程序退出")
+		fmt.Print(utils.ColorRed + "未发现代理数据,请调整配置信息,或向" + utils.LastDataFile + "中直接写入IP:PORT格式的socks5代理\n程序退出" + utils.ColorReset + "\n")
 		os.Exit(1)
 	}
-	fmt.Printf("根据IP:PORT去重后，共发现%v个代理\n检测可用性中......\n", len(utils.SocksList))
+	fmt.Printf(utils.ColorCyan+"根据IP:PORT去重后，共发现%v个代理\n检测可用性中......\n"+utils.ColorReset, len(utils.SocksList))
 
 	//开始检测代理存活性
 
@@ -103,11 +99,11 @@ func main() {
 	if periodicChecking != "" {
 		cronFlag = true
 		cron.AddFunc(periodicChecking, func() {
-			fmt.Printf("\n===代理存活自检 开始===\n\n")
+			fmt.Printf(utils.ColorBlue + "\n===代理存活自检 开始===\n\n" + utils.ColorReset)
 			tempList := make([]string, len(utils.EffectiveList))
 			copy(tempList, utils.EffectiveList)
 			utils.CheckSocks(config.CheckSocks, tempList)
-			fmt.Printf("\n===代理存活自检 结束===\n\n")
+			fmt.Printf(utils.ColorBlue + "\n===代理存活自检 结束===\n\n" + utils.ColorReset)
 		})
 	}
 	//根据配置信息，周期性取本地以及hunter、quake、fofa的数据
@@ -115,15 +111,15 @@ func main() {
 	if periodicGetSocks != "" {
 		cronFlag = true
 		cron.AddFunc(periodicGetSocks, func() {
-			fmt.Printf("\n===周期性取代理数据 开始===\n\n")
+			fmt.Printf(utils.ColorBlue + "\n===周期性取代理数据 开始===\n\n" + utils.ColorReset)
 			utils.SocksList = utils.SocksList[:0]
 			utils.GetSocks(config)
-			fmt.Printf("根据IP:PORT去重后，共发现%v个代理\n检测可用性中......\n", len(utils.SocksList))
+			fmt.Printf(utils.ColorCyan+"根据IP:PORT去重后，共发现%v个代理\n检测可用性中......\n"+utils.ColorReset, len(utils.SocksList))
 			utils.CheckSocks(config.CheckSocks, utils.SocksList)
 			if len(utils.EffectiveList) != 0 {
 				utils.WriteLinesToFile() //存活代理写入硬盘，以备下次启动直接读取
 			}
-			fmt.Printf("\n===周期性取代理数据 结束===\n\n")
+			fmt.Printf(utils.ColorBlue + "\n===周期性取代理数据 结束===\n\n" + utils.ColorReset)
 
 		})
 	}
@@ -133,7 +129,7 @@ func main() {
 	}
 
 	if len(utils.EffectiveList) == 0 {
-		fmt.Println("根据规则检测后，未发现满足要求的代理,请调整配置,程序退出")
+		fmt.Println(utils.ColorRed + "根据规则检测后，未发现满足要求的代理,请调整配置,程序退出" + utils.ColorReset)
 		os.Exit(1)
 	}
 
@@ -154,13 +150,13 @@ func main() {
 	}
 	server, _ := socks5.New(conf)
 	listenerAddr := config.Listener.IP + ":" + strconv.Itoa(config.Listener.Port)
-	fmt.Printf("======其他工具通过配置 socks5://%v 使用收集的代理,如有账号密码，记得配置======\n", listenerAddr)
-	fmt.Println("按回车键随机切换到下一个代理IP，输入 s 回车查看统计...")
+	fmt.Printf(utils.ColorGreen+"======其他工具通过配置 socks5://%v 使用收集的代理,如有账号密码，记得配置======\n"+utils.ColorReset, listenerAddr)
+	fmt.Println(utils.ColorYellow + "按回车键随机切换到下一个代理IP，输入 s 回车查看统计..." + utils.ColorReset)
 
 	// 手动创建 listener，支持优雅关闭
 	l, err := net.Listen("tcp", listenerAddr)
 	if err != nil {
-		fmt.Printf("本地监听服务启动失败：%v\n", err)
+		fmt.Printf(utils.ColorRed+"本地监听服务启动失败：%v\n"+utils.ColorReset, err)
 		os.Exit(1)
 	}
 
@@ -169,7 +165,8 @@ func main() {
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 		<-sigChan
-		fmt.Println("\n\n[优雅关闭] 收到关闭信号，准备退出...")
+		fmt.Println(utils.ColorCyan + "\n\n[优雅关闭] 收到关闭信号，准备退出..." + utils.ColorReset)
+		fmt.Println(utils.ColorYellow + "[提示] 再次按 Ctrl+C 可强制退出" + utils.ColorReset)
 		// 关闭 ShutdownChan，通知拒绝新连接
 		select {
 		case <-utils.ShutdownChan:
@@ -185,16 +182,20 @@ func main() {
 		timeout := time.After(30 * time.Second)
 		for {
 			select {
+			case <-sigChan:
+				// 再次收到关闭信号，强制退出
+				fmt.Println(utils.ColorRed + "\n[优雅关闭] 收到强制退出信号，立即退出！" + utils.ColorReset)
+				os.Exit(0)
 			case <-timeout:
-				fmt.Println("[优雅关闭] 等待超时，强制退出")
+				fmt.Println(utils.ColorYellow + "[优雅关闭] 等待超时，强制退出" + utils.ColorReset)
 				os.Exit(0)
 			default:
 				active := utils.GetActiveConns()
 				if active == 0 {
-					fmt.Println("[优雅关闭] 所有连接已完成，退出。")
+					fmt.Println(utils.ColorGreen + "[优雅关闭] 所有连接已完成，退出。" + utils.ColorReset)
 					os.Exit(0)
 				}
-				fmt.Printf("[优雅关闭] 等待 %d 个活跃连接完成...\n", active)
+				fmt.Printf(utils.ColorCyan+"[优雅关闭] 等待 %d 个活跃连接完成...\n"+utils.ColorReset, active)
 				time.Sleep(1 * time.Second)
 			}
 		}
@@ -208,17 +209,17 @@ func main() {
 			input = strings.TrimSpace(input)
 			if input == "s" || input == "S" {
 				utils.PrintStats()
-				fmt.Println("按回车键随机切换到下一个代理IP，输入 s 回车查看统计...")
+				fmt.Println(utils.ColorYellow + "按回车键随机切换到下一个代理IP，输入 s 回车查看统计..." + utils.ColorReset)
 				continue
 			}
 			utils.SetNextProxyIndex()
 			currentIndex := utils.GetCurrentProxyIndex()
 			if currentIndex >= 0 && len(utils.EffectiveList) > 0 {
-				fmt.Printf("已随机切换到代理IP: %s (剩余可用: %d)\n", utils.EffectiveList[currentIndex], len(utils.EffectiveList))
+				fmt.Printf(utils.ColorGreen+"已随机切换到代理IP: %s (剩余可用: %d)\n"+utils.ColorReset, utils.EffectiveList[currentIndex], len(utils.EffectiveList))
 			} else {
-				fmt.Println("没有可用的代理IP")
+				fmt.Println(utils.ColorRed + "没有可用的代理IP" + utils.ColorReset)
 			}
-			fmt.Println("按回车键随机切换到下一个代理IP，输入 s 回车查看统计...")
+			fmt.Println(utils.ColorYellow + "按回车键随机切换到下一个代理IP，输入 s 回车查看统计..." + utils.ColorReset)
 		}
 	}()
 
@@ -231,7 +232,7 @@ func main() {
 			// 主 goroutine 阻塞等待（信号处理 goroutine 会调用 os.Exit）
 			select {}
 		default:
-			fmt.Printf("SOCKS5 服务异常: %v\n", err)
+			fmt.Printf(utils.ColorRed+"SOCKS5 服务异常: %v\n"+utils.ColorReset, err)
 			os.Exit(1)
 		}
 	}

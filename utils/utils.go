@@ -20,6 +20,18 @@ import (
 	"golang.org/x/net/proxy"
 )
 
+// 颜色常量 (ANSI escape codes)
+const (
+	ColorReset  = "\033[0m"
+	ColorRed    = "\033[31m"
+	ColorGreen  = "\033[32m"
+	ColorYellow = "\033[33m"
+	ColorCyan   = "\033[36m"
+	ColorBlue   = "\033[34m"
+	ColorWhite  = "\033[37m"
+	ColorGray   = "\033[90m"
+)
+
 // InitProxyStats 初始化/更新代理统计信息（新增代理时调用，线程安全）
 func InitProxyStats(proxies []string) {
 	mu.Lock()
@@ -131,28 +143,58 @@ type ProxyStatsItem struct {
 	LastUsed     time.Time
 }
 
-// PrintStats 打印所有代理的统计信息
+// PrintStats 打印所有代理的统计信息（英文表头+颜色）
 func PrintStats() {
 	items := GetSortedProxyStats()
 	if len(items) == 0 {
-		fmt.Println("\n[统计] 暂无代理统计数据")
+		fmt.Println(ColorCyan + "\n[Stats] No proxy statistics available" + ColorReset)
 		return
 	}
-	fmt.Println("\n" + strings.Repeat("=", 90))
-	fmt.Printf("  代理统计信息 (共 %d 个)\n", len(items))
-	fmt.Println(strings.Repeat("=", 90))
-	fmt.Printf("  %-25s %6s %6s %6s %7s %10s %6s\n",
-		"代理地址", "使用数", "成功数", "失败数", "成功率", "平均响应", "连败")
-	fmt.Println(strings.Repeat("-", 80))
+	fmt.Println("\n" + ColorBlue + strings.Repeat("=", 90) + ColorReset)
+	fmt.Printf(ColorCyan+"  Proxy Stats (total: %d)\n"+ColorReset, len(items))
+	fmt.Println(ColorBlue + strings.Repeat("=", 90) + ColorReset)
+	// 英文表头，对齐不会出问题
+	fmt.Printf("  %-25s %6s %6s %6s %7s %9s %6s\n",
+		"ADDR", "USES", "OK", "FAIL", "RATE", "AVG(ms)", "STREAK")
+	fmt.Println(ColorGray + strings.Repeat("-", 80) + ColorReset)
 	for _, item := range items {
 		if item.UseCount == 0 {
 			continue
 		}
-		fmt.Printf("  %-25s %6d %6d %6d %6.1f%% %7dms %5d\n",
+		// 成功率颜色
+		rateColor := ColorGreen
+		if item.SuccessRate < 90 {
+			rateColor = ColorYellow
+		}
+		if item.SuccessRate < 50 {
+			rateColor = ColorRed
+		}
+		// 响应时间颜色
+		timeColor := ColorGreen
+		if item.AvgRespTime > 500 {
+			timeColor = ColorYellow
+		}
+		if item.AvgRespTime > 1000 {
+			timeColor = ColorRed
+		}
+		// 连败颜色
+		streakColor := ColorGreen
+		if item.FailStreak > 0 {
+			streakColor = ColorYellow
+		}
+		if item.FailStreak >= GetMaxFailCount() {
+			streakColor = ColorRed
+		}
+		fmt.Printf("  %-25s %6d %6d %6d "+rateColor+"%6.1f%%"+ColorReset+" "+timeColor+"%7dms"+ColorReset+" "+streakColor+"%5d"+ColorReset+"\n",
 			item.Addr, item.UseCount, item.SuccessCount, item.FailCount,
 			item.SuccessRate, item.AvgRespTime, item.FailStreak)
 	}
-	fmt.Println(strings.Repeat("=", 90))
+	fmt.Println(ColorBlue + strings.Repeat("=", 90) + ColorReset)
+}
+
+// GetMaxFailCount 导出最大失败次数（供PrintStats使用）
+func GetMaxFailCount() int {
+	return getMaxFailCount()
 }
 
 // IncrActiveConns 增加活跃连接计数
@@ -251,7 +293,7 @@ func CheckSocks(checkSocks CheckSocksConfig, socksListParam []string) {
 		isOpenGeolocateSwitch = true
 		reqUrl = checkGeolocateConfig.CheckURL
 	}
-	fmt.Printf("时间:[ %v ] 并发:[ %v ],超时标准:[ %vs ]\n", time.Now().Format("2006-01-02 15:04:05"), maxConcurrentReq, timeout)
+	fmt.Printf(ColorCyan+"时间:[ %v ] 并发:[ %v ],超时标准:[ %vs ]\n"+ColorReset, time.Now().Format("2006-01-02 15:04:05"), maxConcurrentReq, timeout)
 	var num int
 	total := len(socksListParam)
 	var tmpEffectiveList []string
@@ -263,7 +305,7 @@ func CheckSocks(checkSocks CheckSocksConfig, socksListParam []string) {
 		go func(proxyAddr string) {
 			tmpMu.Lock()
 			num++
-			fmt.Printf("\r正检测第 [ %v/%v ] 个代理,异步处理中...                    ", num, total)
+			fmt.Printf(ColorCyan+"\r正检测第 [ %v/%v ] 个代理,异步处理中...                    "+ColorReset, num, total)
 			tmpMu.Unlock()
 			defer Wg.Done()
 			defer func() {
@@ -341,7 +383,7 @@ func CheckSocks(checkSocks CheckSocksConfig, socksListParam []string) {
 	if sec == 0 {
 		sec = 1
 	}
-	fmt.Printf("\n根据配置规则检测完成,用时 [ %vs ] ,共发现 [ %v ] 个可用\n", sec, len(tmpEffectiveList))
+	fmt.Printf(ColorGreen+"\n根据配置规则检测完成,用时 [ %vs ] ,共发现 [ %v ] 个可用\n"+ColorReset, sec, len(tmpEffectiveList))
 }
 
 func WriteLinesToFile() error {
@@ -381,7 +423,8 @@ func transmitReqFromClient(network string, address string) (net.Conn, error) {
 	for {
 		tempProxy := getNextProxy()
 		if tempProxy == "" {
-			return nil, fmt.Errorf("已无可用代理，请重新获取代理并运行程序")
+			fmt.Println(ColorRed + "[错误] 已无可用代理，请重新获取代理并运行程序" + ColorReset)
+			return nil, fmt.Errorf("no available proxy")
 		}
 		// 根据日志级别决定是否打印当前使用的代理
 		if LogLevel == "debug" {
@@ -398,18 +441,18 @@ func transmitReqFromClient(network string, address string) (net.Conn, error) {
 		if err != nil {
 			// delInvalidProxy 内部原子化记录失败并判断是否移除
 			if delInvalidProxy(tempProxy) {
-				fmt.Printf("[%s] 代理 %s 连续失败已达上限，已移除，自动切换下一个...\n", time.Now().Format("2006-01-02 15:04:05"), tempProxy)
+				fmt.Printf(ColorYellow+"[%s] 代理 %s 连续失败已达上限，已移除，自动切换下一个..."+ColorReset+"\n", time.Now().Format("2006-01-02 15:04:05"), tempProxy)
 			} else {
-				fmt.Printf("[%s] 代理 %s 连接失败，连续失败 %d/%d\n", time.Now().Format("2006-01-02 15:04:05"), tempProxy, getFailStreak(tempProxy), getMaxFailCount())
+				fmt.Printf(ColorYellow+"[%s] 代理 %s 连接失败，连续失败 %d/%d"+ColorReset+"\n", time.Now().Format("2006-01-02 15:04:05"), tempProxy, getFailStreak(tempProxy), getMaxFailCount())
 			}
 			continue
 		}
 		conn, err := dialect.Dial(network, address)
 		if err != nil {
 			if delInvalidProxy(tempProxy) {
-				fmt.Printf("[%s] 代理 %s 连接目标失败已达上限，已移除，自动切换下一个...\n", time.Now().Format("2006-01-02 15:04:05"), tempProxy)
+				fmt.Printf(ColorYellow+"[%s] 代理 %s 连接目标失败已达上限，已移除，自动切换下一个..."+ColorReset+"\n", time.Now().Format("2006-01-02 15:04:05"), tempProxy)
 			} else {
-				fmt.Printf("[%s] 代理 %s 连接目标失败，连续失败 %d/%d\n", time.Now().Format("2006-01-02 15:04:05"), tempProxy, getFailStreak(tempProxy), getMaxFailCount())
+				fmt.Printf(ColorYellow+"[%s] 代理 %s 连接目标失败，连续失败 %d/%d"+ColorReset+"\n", time.Now().Format("2006-01-02 15:04:05"), tempProxy, getFailStreak(tempProxy), getMaxFailCount())
 			}
 			continue
 		}
@@ -459,7 +502,7 @@ func getNextProxy() string {
 		return "" // 返回空字符串，由调用方处理
 	}
 	if len(EffectiveList) <= 2 {
-		fmt.Printf("***可用代理已仅剩%v个,%v,***\n", len(EffectiveList), EffectiveList)
+		fmt.Printf(ColorYellow+"***可用代理已仅剩%v个,%v,***"+ColorReset+"\n", len(EffectiveList), EffectiveList)
 	}
 	// 随机选择一个代理，避免短时间内重复
 	return EffectiveList[rand.Intn(len(EffectiveList))]

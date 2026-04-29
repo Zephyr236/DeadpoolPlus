@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"fmt"
 	"math/rand"
 	"sync"
 	"time"
@@ -73,5 +74,5 @@ func Banner() {
                                        \ \_\                        
                                         \/_/                        
 `
-	print(banner)
+	fmt.Print(ColorCyan + banner + ColorReset)
 }
