@@ -12,12 +12,159 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"golang.org/x/net/proxy"
 )
+
+// InitProxyStats 初始化/更新代理统计信息（新增代理时调用，线程安全）
+func InitProxyStats(proxies []string) {
+	mu.Lock()
+	defer mu.Unlock()
+	if StatsMap == nil {
+		StatsMap = make(map[string]*ProxyStats)
+	}
+	now := time.Now()
+	for _, p := range proxies {
+		if _, ok := StatsMap[p]; !ok {
+			StatsMap[p] = &ProxyStats{LastUsed: now}
+		}
+	}
+}
+
+// RecordProxySuccess 记录代理成功使用
+func RecordProxySuccess(proxyAddr string, respTime time.Duration) {
+	mu.Lock()
+	defer mu.Unlock()
+	if StatsMap == nil {
+		return
+	}
+	s, ok := StatsMap[proxyAddr]
+	if !ok {
+		s = &ProxyStats{}
+		StatsMap[proxyAddr] = s
+	}
+	s.UseCount++
+	s.SuccessCount++
+	s.TotalRespTime += respTime
+	s.LastUsed = time.Now()
+	s.FailStreak = 0 // 成功一次，重置连续失败计数
+}
+
+// RecordProxyFailure 记录代理失败，返回 true 表示连续失败次数已达上限应移除
+func RecordProxyFailure(proxyAddr string) bool {
+	mu.Lock()
+	defer mu.Unlock()
+	if StatsMap == nil {
+		return true // 没有统计信息时，直接移除
+	}
+	s, ok := StatsMap[proxyAddr]
+	if !ok {
+		s = &ProxyStats{}
+		StatsMap[proxyAddr] = s
+	}
+	s.UseCount++
+	s.FailCount++
+	s.FailStreak++
+	maxFail := MaxFailCount
+	if maxFail <= 0 {
+		maxFail = 3 // 默认连续失败3次才移除
+	}
+	return s.FailStreak >= maxFail
+}
+
+// RemoveProxyStats 移除代理时同步清理统计信息
+func RemoveProxyStats(proxyAddr string) {
+	mu.Lock()
+	defer mu.Unlock()
+	if StatsMap != nil {
+		delete(StatsMap, proxyAddr)
+	}
+}
+
+// GetSortedProxyStats 返回按使用次数排序的代理统计信息（用于展示）
+func GetSortedProxyStats() []ProxyStatsItem {
+	mu.Lock()
+	defer mu.Unlock()
+	if StatsMap == nil {
+		return nil
+	}
+	items := make([]ProxyStatsItem, 0, len(StatsMap))
+	for addr, s := range StatsMap {
+		avgMs := int64(0)
+		if s.SuccessCount > 0 {
+			avgMs = int64(s.TotalRespTime / time.Millisecond / time.Duration(s.SuccessCount))
+		}
+		successRate := 0.0
+		if s.UseCount > 0 {
+			successRate = float64(s.SuccessCount) / float64(s.UseCount) * 100
+		}
+		items = append(items, ProxyStatsItem{
+			Addr:         addr,
+			UseCount:     s.UseCount,
+			SuccessCount: s.SuccessCount,
+			FailCount:    s.FailCount,
+			SuccessRate:  successRate,
+			AvgRespTime:  avgMs,
+			FailStreak:   s.FailStreak,
+			LastUsed:     s.LastUsed,
+		})
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].UseCount > items[j].UseCount // 按使用次数降序
+	})
+	return items
+}
+
+// ProxyStatsItem 用于展示的代理统计项
+type ProxyStatsItem struct {
+	Addr         string
+	UseCount     int
+	SuccessCount int
+	FailCount    int
+	SuccessRate  float64
+	AvgRespTime  int64
+	FailStreak   int
+	LastUsed     time.Time
+}
+
+// PrintStats 打印所有代理的统计信息
+func PrintStats() {
+	items := GetSortedProxyStats()
+	if len(items) == 0 {
+		fmt.Println("\n[统计] 暂无代理统计数据")
+		return
+	}
+	fmt.Println("\n" + strings.Repeat("=", 90))
+	fmt.Printf("  代理统计信息 (共 %d 个)\n", len(items))
+	fmt.Println(strings.Repeat("=", 90))
+	fmt.Printf("  %-25s %6s %6s %6s %7s %10s %6s\n",
+		"代理地址", "使用数", "成功数", "失败数", "成功率", "平均响应", "连败")
+	fmt.Println(strings.Repeat("-", 80))
+	for _, item := range items {
+		if item.UseCount == 0 {
+			continue
+		}
+		fmt.Printf("  %-25s %6d %6d %6d %6.1f%% %7dms %5d\n",
+			item.Addr, item.UseCount, item.SuccessCount, item.FailCount,
+			item.SuccessRate, item.AvgRespTime, item.FailStreak)
+	}
+	fmt.Println(strings.Repeat("=", 90))
+}
+
+// IncrActiveConns 增加活跃连接计数
+func IncrActiveConns() {
+	// 注意：使用 atomic 包操作，这里用 mutex 保护
+	// 为简化，在 transmitReqFromClient 中直接处理
+}
+
+// GetActiveConns 获取当前活跃连接数（用于优雅关闭）
+func GetActiveConns() int32 {
+	return ActiveConns
+}
 
 // 防止goroutine 异步处理问题
 var addSocksMu sync.Mutex
@@ -186,8 +333,10 @@ func CheckSocks(checkSocks CheckSocksConfig, socksListParam []string) {
 	mu.Lock()
 	EffectiveList = make([]string, len(tmpEffectiveList))
 	copy(EffectiveList, tmpEffectiveList)
-	proxyIndex = 0
+	proxyIndex = rand.Intn(len(tmpEffectiveList)) // 随机初始化索引
 	mu.Unlock()
+	// 初始化/更新代理统计信息
+	InitProxyStats(EffectiveList)
 	sec := int(time.Since(startTime).Seconds())
 	if sec == 0 {
 		sec = 1
@@ -218,6 +367,17 @@ func DefineDial(ctx context.Context, network, address string) (net.Conn, error) 
 }
 
 func transmitReqFromClient(network string, address string) (net.Conn, error) {
+	// 活跃连接+1（用于优雅关闭）
+	mu.Lock()
+	ActiveConns++
+	mu.Unlock()
+
+	defer func() {
+		mu.Lock()
+		ActiveConns--
+		mu.Unlock()
+	}()
+
 	for {
 		tempProxy := getNextProxy()
 		if tempProxy == "" {
@@ -233,26 +393,68 @@ func transmitReqFromClient(network string, address string) (net.Conn, error) {
 			Timeout: timeout,
 		}
 
+		startTime := time.Now()
 		dialect, err := proxy.SOCKS5(network, tempProxy, nil, dialer)
 		if err != nil {
-			delInvalidProxy(tempProxy)
-			fmt.Printf("[%s] 代理 %s 连接失败，已移除，自动切换下一个...\n", time.Now().Format("2006-01-02 15:04:05"), tempProxy)
+			// delInvalidProxy 内部原子化记录失败并判断是否移除
+			if delInvalidProxy(tempProxy) {
+				fmt.Printf("[%s] 代理 %s 连续失败已达上限，已移除，自动切换下一个...\n", time.Now().Format("2006-01-02 15:04:05"), tempProxy)
+			} else {
+				fmt.Printf("[%s] 代理 %s 连接失败，连续失败 %d/%d\n", time.Now().Format("2006-01-02 15:04:05"), tempProxy, getFailStreak(tempProxy), getMaxFailCount())
+			}
 			continue
 		}
 		conn, err := dialect.Dial(network, address)
 		if err != nil {
-			delInvalidProxy(tempProxy)
-			fmt.Printf("[%s] 代理 %s 连接目标失败，已移除，自动切换下一个...\n", time.Now().Format("2006-01-02 15:04:05"), tempProxy)
+			if delInvalidProxy(tempProxy) {
+				fmt.Printf("[%s] 代理 %s 连接目标失败已达上限，已移除，自动切换下一个...\n", time.Now().Format("2006-01-02 15:04:05"), tempProxy)
+			} else {
+				fmt.Printf("[%s] 代理 %s 连接目标失败，连续失败 %d/%d\n", time.Now().Format("2006-01-02 15:04:05"), tempProxy, getFailStreak(tempProxy), getMaxFailCount())
+			}
 			continue
 		}
 
+		// 记录成功
+		respTime := time.Since(startTime)
+		RecordProxySuccess(tempProxy, respTime)
 		return conn, nil
 	}
+}
+
+// getFailStreak 获取某代理当前连续失败次数（线程安全）
+func getFailStreak(proxyAddr string) int {
+	mu.Lock()
+	defer mu.Unlock()
+	if StatsMap == nil {
+		return 0
+	}
+	s, ok := StatsMap[proxyAddr]
+	if !ok {
+		return 0
+	}
+	return s.FailStreak
+}
+
+// getMaxFailCount 获取配置的最大失败次数
+func getMaxFailCount() int {
+	maxFail := MaxFailCount
+	if maxFail <= 0 {
+		return 3
+	}
+	return maxFail
 }
 
 func getNextProxy() string {
 	mu.Lock()
 	defer mu.Unlock()
+
+	// 检查是否正在关闭
+	select {
+	case <-ShutdownChan:
+		return "" // 正在关闭，不返回代理
+	default:
+	}
+
 	if len(EffectiveList) == 0 {
 		return "" // 返回空字符串，由调用方处理
 	}
@@ -263,26 +465,54 @@ func getNextProxy() string {
 	return EffectiveList[rand.Intn(len(EffectiveList))]
 }
 
-// 使用过程中删除无效的代理
-func delInvalidProxy(proxy string) {
+// delInvalidProxy 记录一次失败并尝试移除代理（原子操作）
+// 返回 true 表示代理已被移除，false 表示连续失败未达上限暂不移除
+func delInvalidProxy(proxy string) bool {
 	mu.Lock()
 	defer mu.Unlock()
+
+	// 更新统计：失败次数 +1，连续失败 +1
+	if StatsMap == nil {
+		StatsMap = make(map[string]*ProxyStats)
+	}
+	s, ok := StatsMap[proxy]
+	if !ok {
+		s = &ProxyStats{}
+		StatsMap[proxy] = s
+	}
+	s.UseCount++
+	s.FailCount++
+	s.FailStreak++
+
+	// 判断连续失败是否达上限
+	maxFail := MaxFailCount
+	if maxFail <= 0 {
+		maxFail = 3
+	}
+	if s.FailStreak < maxFail {
+		return false // 未达上限，暂不移除
+	}
+
+	// 达上限，从 EffectiveList 移除
 	for i, p := range EffectiveList {
 		if p == proxy {
 			EffectiveList = append(EffectiveList[:i], EffectiveList[i+1:]...)
-			// 修正 proxyIndex：如果移除的元素在当前索引之前，proxyIndex 需要减 1
 			if proxyIndex > i {
 				proxyIndex--
 			}
 			break
 		}
 	}
+	// 清理统计信息
+	delete(StatsMap, proxy)
+
 	// 确保 proxyIndex 不越界
 	if len(EffectiveList) == 0 {
 		proxyIndex = 0
 	} else if proxyIndex >= len(EffectiveList) {
 		proxyIndex = 0
 	}
+	return true
 }
 
 // 从本地文件获取，格式为IP:PORT

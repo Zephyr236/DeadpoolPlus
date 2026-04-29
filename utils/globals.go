@@ -3,7 +3,18 @@ package utils
 import (
 	"math/rand"
 	"sync"
+	"time"
 )
+
+// ProxyStats 单个代理的统计信息
+type ProxyStats struct {
+	UseCount      int           // 总使用次数
+	SuccessCount  int           // 成功次数
+	FailCount     int           // 连接失败次数
+	TotalRespTime time.Duration // 总响应时间（用于计算平均值）
+	LastUsed      time.Time     // 上次使用时间
+	FailStreak    int           // 连续失败次数（用于健康度判断）
+}
 
 var (
 	SocksList     []string
@@ -15,6 +26,17 @@ var (
 	Wg            sync.WaitGroup
 	mu            sync.Mutex
 	semaphore     chan struct{}
+
+	// 代理统计信息：key 为 "IP:PORT"
+	StatsMap map[string]*ProxyStats
+
+	// 最大连续失败次数，超过则移除代理（默认3）
+	MaxFailCount int
+
+	// 优雅关闭
+	ShutdownChan chan struct{}
+	ActiveConns  int32 // 当前活跃连接数
+	activeMu     sync.Mutex
 )
 
 // GetCurrentProxyIndex 获取当前随机选择的代理索引

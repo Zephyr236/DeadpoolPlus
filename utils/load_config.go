@@ -36,6 +36,7 @@ type CheckSocksConfig struct {
 	CheckRspKeywords string               `toml:"checkRspKeywords"`
 	MaxConcurrentReq int                  `toml:"maxConcurrentReq"`
 	Timeout          int                  `toml:"timeout"`
+	MaxFailCount     int                  `toml:"maxFailCount"` // 连续失败N次才移除代理，默认3
 	CheckGeolocate   CheckGeolocateConfig `toml:"checkGeolocate"`
 }
 

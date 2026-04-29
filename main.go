@@ -6,9 +6,12 @@ import (
 	"io"
 	"log"
 	"math/rand"
+	"net"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/armon/go-socks5"
@@ -67,6 +70,11 @@ func main() {
 	if utils.LogLevel == "" {
 		utils.LogLevel = "normal"
 	}
+
+	// 初始化代理统计、优雅关闭通道、最大失败次数
+	utils.StatsMap = make(map[string]*utils.ProxyStats)
+	utils.ShutdownChan = make(chan struct{})
+	utils.MaxFailCount = config.CheckSocks.MaxFailCount
 
 	// 从本地文件中取socks代理
 	if utils.LogLevel == "debug" {
@@ -145,15 +153,64 @@ func main() {
 		conf.AuthMethods = []socks5.Authenticator{cator}
 	}
 	server, _ := socks5.New(conf)
-	listener := config.Listener.IP + ":" + strconv.Itoa(config.Listener.Port)
-	fmt.Printf("======其他工具通过配置 socks5://%v 使用收集的代理,如有账号密码，记得配置======\n", listener)
-	fmt.Println("按回车键随机切换到下一个代理IP...")
+	listenerAddr := config.Listener.IP + ":" + strconv.Itoa(config.Listener.Port)
+	fmt.Printf("======其他工具通过配置 socks5://%v 使用收集的代理,如有账号密码，记得配置======\n", listenerAddr)
+	fmt.Println("按回车键随机切换到下一个代理IP，输入 s 回车查看统计...")
 
-	// 使用goroutine监听键盘输入
+	// 手动创建 listener，支持优雅关闭
+	l, err := net.Listen("tcp", listenerAddr)
+	if err != nil {
+		fmt.Printf("本地监听服务启动失败：%v\n", err)
+		os.Exit(1)
+	}
+
+	// 信号监听 goroutine：捕获 SIGINT/SIGTERM，执行优雅关闭
+	go func(listener net.Listener) {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+		<-sigChan
+		fmt.Println("\n\n[优雅关闭] 收到关闭信号，准备退出...")
+		// 关闭 ShutdownChan，通知拒绝新连接
+		select {
+		case <-utils.ShutdownChan:
+			// 已经关闭
+		default:
+			close(utils.ShutdownChan)
+		}
+		// 打印统计信息
+		utils.PrintStats()
+		// 关闭 listener，停止接受新连接
+		listener.Close()
+		// 等待活跃连接完成（最多等待30秒）
+		timeout := time.After(30 * time.Second)
+		for {
+			select {
+			case <-timeout:
+				fmt.Println("[优雅关闭] 等待超时，强制退出")
+				os.Exit(0)
+			default:
+				active := utils.GetActiveConns()
+				if active == 0 {
+					fmt.Println("[优雅关闭] 所有连接已完成，退出。")
+					os.Exit(0)
+				}
+				fmt.Printf("[优雅关闭] 等待 %d 个活跃连接完成...\n", active)
+				time.Sleep(1 * time.Second)
+			}
+		}
+	}(l)
+
+	// 使用goroutine监听键盘输入（支持 s 查看统计）
 	go func() {
 		for {
 			var input string
 			fmt.Scanln(&input)
+			input = strings.TrimSpace(input)
+			if input == "s" || input == "S" {
+				utils.PrintStats()
+				fmt.Println("按回车键随机切换到下一个代理IP，输入 s 回车查看统计...")
+				continue
+			}
 			utils.SetNextProxyIndex()
 			currentIndex := utils.GetCurrentProxyIndex()
 			if currentIndex >= 0 && len(utils.EffectiveList) > 0 {
@@ -161,13 +218,22 @@ func main() {
 			} else {
 				fmt.Println("没有可用的代理IP")
 			}
-			fmt.Println("按回车键随机切换到下一个代理IP...")
+			fmt.Println("按回车键随机切换到下一个代理IP，输入 s 回车查看统计...")
 		}
 	}()
 
-	if err := server.ListenAndServe("tcp", listener); err != nil {
-		fmt.Printf("本地监听服务启动失败：%v\n", err)
-		os.Exit(1)
+	// 启动 SOCKS5 服务（阻塞，直到 listener 被关闭）
+	if err := server.Serve(l); err != nil {
+		// 如果是关闭导致的错误（listener 已关闭），正常退出
+		select {
+		case <-utils.ShutdownChan:
+			// 正常关闭，等待信号处理的 goroutine 完成退出
+			// 主 goroutine 阻塞等待（信号处理 goroutine 会调用 os.Exit）
+			select {}
+		default:
+			fmt.Printf("SOCKS5 服务异常: %v\n", err)
+			os.Exit(1)
+		}
 	}
 
 }
