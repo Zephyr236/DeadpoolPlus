@@ -1,0 +1,36 @@
+project_name: deadpool
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    main: ./main.go
+    binary: deadpool
+    ldflags: -s -w
+
+archives:
+  - format: zip
+    name_template: >-
+      {{ .ProjectName }}_v{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    files:
+      - config.toml
+      - README.md
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  version_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
