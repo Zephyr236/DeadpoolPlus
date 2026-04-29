@@ -5,15 +5,20 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/armon/go-socks5"
 	"github.com/robfig/cron/v3"
 )
 
 func main() {
+	// 初始化随机种子
+	rand.Seed(time.Now().UnixNano())
+
 	utils.Banner()
 	fmt.Print("By:thinkoaa GitHub:https://github.com/thinkoaa/Deadpool\n\n\n")
 
@@ -142,7 +147,7 @@ func main() {
 	server, _ := socks5.New(conf)
 	listener := config.Listener.IP + ":" + strconv.Itoa(config.Listener.Port)
 	fmt.Printf("======其他工具通过配置 socks5://%v 使用收集的代理,如有账号密码，记得配置======\n", listener)
-	fmt.Println("按回车键切换到下一个代理IP...")
+	fmt.Println("按回车键随机切换到下一个代理IP...")
 
 	// 使用goroutine监听键盘输入
 	go func() {
@@ -151,12 +156,12 @@ func main() {
 			fmt.Scanln(&input)
 			utils.SetNextProxyIndex()
 			currentIndex := utils.GetCurrentProxyIndex()
-			if len(utils.EffectiveList) > 0 {
-				fmt.Printf("已切换到代理IP: %s (索引: %d/%d)\n", utils.EffectiveList[currentIndex], currentIndex+1, len(utils.EffectiveList))
+			if currentIndex >= 0 && len(utils.EffectiveList) > 0 {
+				fmt.Printf("已随机切换到代理IP: %s (剩余可用: %d)\n", utils.EffectiveList[currentIndex], len(utils.EffectiveList))
 			} else {
 				fmt.Println("没有可用的代理IP")
 			}
-			fmt.Println("按回车键切换到下一个代理IP...")
+			fmt.Println("按回车键随机切换到下一个代理IP...")
 		}
 	}()
 

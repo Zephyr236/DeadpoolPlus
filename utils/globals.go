@@ -1,6 +1,9 @@
 package utils
 
-import "sync"
+import (
+	"math/rand"
+	"sync"
+)
 
 var (
 	SocksList     []string
@@ -14,19 +17,25 @@ var (
 	semaphore     chan struct{}
 )
 
-// GetCurrentProxyIndex 获取当前代理索引
+// GetCurrentProxyIndex 获取当前随机选择的代理索引
 func GetCurrentProxyIndex() int {
 	mu.Lock()
 	defer mu.Unlock()
+	if len(EffectiveList) == 0 {
+		return -1
+	}
+	// 随机选择一个索引
+	proxyIndex = rand.Intn(len(EffectiveList))
 	return proxyIndex
 }
 
-// SetNextProxyIndex 设置下一个代理索引
+// SetNextProxyIndex 随机选择下一个代理索引
 func SetNextProxyIndex() {
 	mu.Lock()
 	defer mu.Unlock()
 	if len(EffectiveList) > 0 {
-		proxyIndex = (proxyIndex + 1) % len(EffectiveList)
+		// 随机选择一个索引
+		proxyIndex = rand.Intn(len(EffectiveList))
 	}
 }
 

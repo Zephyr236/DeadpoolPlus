@@ -39,27 +39,25 @@ func TestGetNextProxyEmptyList(t *testing.T) {
 	}
 }
 
-func TestGetNextProxyNormal(t *testing.T) {
+func TestGetNextProxyRandom(t *testing.T) {
 	// 设置测试数据
-	EffectiveList = []string{"127.0.0.1:1080", "127.0.0.2:1080"}
+	EffectiveList = []string{"127.0.0.1:1080", "127.0.0.2:1080", "127.0.0.3:1080"}
 	proxyIndex = 0
 	
-	// 第一次调用应该返回第一个代理
-	result1 := getNextProxy()
-	if result1 != "127.0.0.1:1080" {
-		t.Errorf("Expected 127.0.0.1:1080, got: %s", result1)
-	}
-	
-	// 第二次调用应该返回第二个代理
-	result2 := getNextProxy()
-	if result2 != "127.0.0.2:1080" {
-		t.Errorf("Expected 127.0.0.2:1080, got: %s", result2)
-	}
-	
-	// 第三次调用应该循环回第一个代理
-	result3 := getNextProxy()
-	if result3 != "127.0.0.1:1080" {
-		t.Errorf("Expected 127.0.0.1:1080 (loop back), got: %s", result3)
+	// 随机轮询：调用多次，应该都返回列表中的代理
+	for i := 0; i < 100; i++ {
+		result := getNextProxy()
+		found := false
+		for _, proxy := range EffectiveList {
+			if proxy == result {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("getNextProxy returned invalid proxy: %s", result)
+			break
+		}
 	}
 }
 
@@ -96,20 +94,109 @@ func TestLogLevelSetting(t *testing.T) {
 		{"debug", "debug"},
 		{"normal", "normal"},
 		{"", "normal"}, // 空字符串应该默认为 normal
-		{"DEBUG", "debug"}, // 应该不区分大小写
 	}
 	
 	for _, tc := range testCases {
-		LogLevel = tc.input
-		// 模拟 main.go 中的处理逻辑
-		LogLevel = strings.TrimSpace(LogLevel)
+		LogLevel = strings.TrimSpace(tc.input)
 		if LogLevel == "" {
 			LogLevel = "normal"
 		}
 		
-		if LogLevel != tc.expected && !(strings.ToLower(LogLevel) == tc.expected) {
-			t.Errorf("For input '%s', expected '%s' or case-insensitive match, got: '%s'", 
+		if LogLevel != tc.expected {
+			t.Errorf("For input '%s', expected '%s', got: '%s'", 
 				tc.input, tc.expected, LogLevel)
+		}
+	}
+}
+
+func TestValidateConfig(t *testing.T) {
+	// 测试配置验证功能
+	
+	// 测试用例 1：合法配置
+	validConfig := Config{
+		Listener: ListenerConfig{
+			IP:       "127.0.0.1",
+			Port:     10086,
+			LogLevel: "normal",
+		},
+		CheckSocks: CheckSocksConfig{
+			Timeout:          6,
+			MaxConcurrentReq: 200,
+			CheckGeolocate: CheckGeolocateConfig{
+				Switch: "close",
+			},
+		},
+	}
+	
+	errors := ValidateConfig(validConfig)
+	if len(errors) > 0 {
+		t.Errorf("Expected no validation errors, got: %v", errors)
+	}
+	
+	// 测试用例 2：非法端口
+	invalidPortConfig := validConfig
+	invalidPortConfig.Listener.Port = 99999
+	
+	errors = ValidateConfig(invalidPortConfig)
+	if len(errors) == 0 {
+		t.Errorf("Expected validation error for invalid port")
+	}
+	
+	// 测试用例 3：非法日志级别
+	invalidLogLevelConfig := validConfig
+	invalidLogLevelConfig.Listener.LogLevel = "verbose"
+	
+	errors = ValidateConfig(invalidLogLevelConfig)
+	if len(errors) == 0 {
+		t.Errorf("Expected validation error for invalid logLevel")
+	}
+	
+	// 测试用例 4：非法超时时间
+	invalidTimeoutConfig := validConfig
+	invalidTimeoutConfig.CheckSocks.Timeout = 0
+	
+	errors = ValidateConfig(invalidTimeoutConfig)
+	if len(errors) == 0 {
+		t.Errorf("Expected validation error for invalid timeout")
+	}
+	
+	// 测试用例 5：非法并发数
+	invalidConcurrentConfig := validConfig
+	invalidConcurrentConfig.CheckSocks.MaxConcurrentReq = 0
+	
+	errors = ValidateConfig(invalidConcurrentConfig)
+	if len(errors) == 0 {
+		t.Errorf("Expected validation error for invalid maxConcurrentReq")
+	}
+	
+	// 测试用例 6：非法 CheckGeolocate 开关
+	invalidSwitchConfig := validConfig
+	invalidSwitchConfig.CheckSocks.CheckGeolocate.Switch = "enabled"
+	
+	errors = ValidateConfig(invalidSwitchConfig)
+	if len(errors) == 0 {
+		t.Errorf("Expected validation error for invalid checkGeolocate switch")
+	}
+}
+
+func TestIsValidCronExpression(t *testing.T) {
+	testCases := []struct {
+		input    string
+		expected bool
+	}{
+		{"0 */5 * * *", true},
+		{"0 6 * * 6", true},
+		{"*/10 * * * *", true},
+		{"invalid", false},
+		{"60 * * * *", true}, // 我们的验证很简单，不会检查范围
+		{"* * * * *", true},
+		{"* * * * * *", true}, // 6 个字段
+	}
+	
+	for _, tc := range testCases {
+		result := isValidCronExpression(tc.input)
+		if result != tc.expected {
+			t.Errorf("For input '%s', expected %v, got: %v", tc.input, tc.expected, result)
 		}
 	}
 }

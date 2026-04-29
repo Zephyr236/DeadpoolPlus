@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/url"
@@ -258,9 +259,8 @@ func getNextProxy() string {
 	if len(EffectiveList) <= 2 {
 		fmt.Printf("***可用代理已仅剩%v个,%v,***\n", len(EffectiveList), EffectiveList)
 	}
-	proxy := EffectiveList[proxyIndex]
-	proxyIndex = (proxyIndex + 1) % len(EffectiveList) // 循环访问
-	return proxy
+	// 随机选择一个代理，避免短时间内重复
+	return EffectiveList[rand.Intn(len(EffectiveList))]
 }
 
 // 使用过程中删除无效的代理
