@@ -152,7 +152,7 @@ func GetSocksFromFile(socksFileName string) {
 		for scanner.Scan() {
 			line := scanner.Text()
 			if strings.TrimSpace(line) != "" {
-				SocksList = append(SocksList, line)
+				addSocks(line) // 使用线程安全的 addSocks，避免并发写入冲突
 			}
 		}
 		// 检查扫描过程中是否发生了错误

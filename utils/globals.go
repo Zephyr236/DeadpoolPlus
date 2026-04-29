@@ -8,6 +8,7 @@ var (
 	proxyIndex    int
 	Timeout       int
 	LastDataFile  = "lastData.txt"
+	LogLevel      = "normal" // normal: 只打印重要信息, debug: 打印每个请求的代理
 	Wg            sync.WaitGroup
 	mu            sync.Mutex
 	semaphore     chan struct{}

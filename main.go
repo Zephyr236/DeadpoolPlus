@@ -53,10 +53,20 @@ func main() {
 	config, err := utils.LoadConfig(configPath)
 	if err != nil {
 		fmt.Printf("配置文件 %s 存在错误: %v\n", configPath, err)
+		fmt.Println("请检查配置文件格式是否正确，参考 README 中的配置说明")
 		os.Exit(1)
 	}
 
+	// 设置日志级别
+	utils.LogLevel = strings.TrimSpace(config.Listener.LogLevel)
+	if utils.LogLevel == "" {
+		utils.LogLevel = "normal"
+	}
+
 	// 从本地文件中取socks代理
+	if utils.LogLevel == "debug" {
+		fmt.Print("***debug模式: 每个请求的代理信息会打印到命令行***\n\n")
+	}
 	fmt.Print("***直接使用fmt打印当前使用的代理,若高并发时,命令行打印可能会阻塞，不对打印做特殊处理，可忽略，不会影响实际的请求转发***\n\n")
 	if lastDataPath == utils.LastDataFile {
 		// 未指定自定义lastdata路径时，从网络空间获取代理

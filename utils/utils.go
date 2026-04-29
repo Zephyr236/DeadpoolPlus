@@ -26,6 +26,7 @@ func addSocks(socks5 string) {
 	SocksList = append(SocksList, socks5)
 	addSocksMu.Unlock()
 }
+
 func fetchContent(baseURL string, method string, timeout int, urlParams map[string]string, headers map[string]string, jsonBody string) (string, error) {
 	client := &http.Client{
 		Transport: &http.Transport{
@@ -118,6 +119,7 @@ func CheckSocks(checkSocks CheckSocksConfig, socksListParam []string) {
 			tmpMu.Unlock()
 			defer Wg.Done()
 			defer func() {
+
 				<-semaphore
 
 			}()
@@ -215,34 +217,46 @@ func DefineDial(ctx context.Context, network, address string) (net.Conn, error) 
 }
 
 func transmitReqFromClient(network string, address string) (net.Conn, error) {
-	tempProxy := getNextProxy()
-	fmt.Println(time.Now().Format("2006-01-02 15:04:05") + "\t" + tempProxy)
-	// 超时时间设置为 5 秒
-	timeout := time.Duration(Timeout) * time.Second
+	for {
+		tempProxy := getNextProxy()
+		if tempProxy == "" {
+			return nil, fmt.Errorf("已无可用代理，请重新获取代理并运行程序")
+		}
+		// 根据日志级别决定是否打印当前使用的代理
+		if LogLevel == "debug" {
+			fmt.Println(time.Now().Format("2006-01-02 15:04:05") + "\t" + tempProxy)
+		}
+		timeout := time.Duration(Timeout) * time.Second
 
-	dialer := &net.Dialer{
-		Timeout: timeout,
+		dialer := &net.Dialer{
+			Timeout: timeout,
+		}
+
+		dialect, err := proxy.SOCKS5(network, tempProxy, nil, dialer)
+		if err != nil {
+			delInvalidProxy(tempProxy)
+			fmt.Printf("[%s] 代理 %s 连接失败，已移除，自动切换下一个...\n", time.Now().Format("2006-01-02 15:04:05"), tempProxy)
+			continue
+		}
+		conn, err := dialect.Dial(network, address)
+		if err != nil {
+			delInvalidProxy(tempProxy)
+			fmt.Printf("[%s] 代理 %s 连接目标失败，已移除，自动切换下一个...\n", time.Now().Format("2006-01-02 15:04:05"), tempProxy)
+			continue
+		}
+
+		return conn, nil
 	}
-
-	dialect, _ := proxy.SOCKS5(network, tempProxy, nil, dialer)
-	conn, err := dialect.Dial(network, address)
-	if err != nil {
-		delInvalidProxy(tempProxy)
-		fmt.Printf("%s无效，自动切换下一个......\n", tempProxy)
-		return transmitReqFromClient(network, address)
-	}
-
-	return conn, nil
 }
 
 func getNextProxy() string {
 	mu.Lock()
 	defer mu.Unlock()
 	if len(EffectiveList) == 0 {
-		fmt.Println("***已无可用代理，请重新运行程序***")
+		return "" // 返回空字符串，由调用方处理
 	}
 	if len(EffectiveList) <= 2 {
-		fmt.Printf("***可用代理已仅剩%v个,%v，***\n", len(EffectiveList), EffectiveList)
+		fmt.Printf("***可用代理已仅剩%v个,%v,***\n", len(EffectiveList), EffectiveList)
 	}
 	proxy := EffectiveList[proxyIndex]
 	proxyIndex = (proxyIndex + 1) % len(EffectiveList) // 循环访问
@@ -252,20 +266,26 @@ func getNextProxy() string {
 // 使用过程中删除无效的代理
 func delInvalidProxy(proxy string) {
 	mu.Lock()
+	defer mu.Unlock()
 	for i, p := range EffectiveList {
 		if p == proxy {
 			EffectiveList = append(EffectiveList[:i], EffectiveList[i+1:]...)
-			if proxyIndex != 0 {
-				proxyIndex = proxyIndex - 1
+			// 修正 proxyIndex：如果移除的元素在当前索引之前，proxyIndex 需要减 1
+			if proxyIndex > i {
+				proxyIndex--
 			}
 			break
 		}
 	}
-	if proxyIndex >= len(EffectiveList) {
+	// 确保 proxyIndex 不越界
+	if len(EffectiveList) == 0 {
+		proxyIndex = 0
+	} else if proxyIndex >= len(EffectiveList) {
 		proxyIndex = 0
 	}
-	mu.Unlock()
 }
+
+// 从本地文件获取，格式为IP:PORT
 
 func GetSocks(config Config) {
 	GetSocksFromFile(LastDataFile)

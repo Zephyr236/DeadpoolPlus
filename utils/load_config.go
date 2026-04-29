@@ -20,6 +20,7 @@ type ListenerConfig struct {
 	Port     int    `toml:"PORT"`
 	UserName string `toml:"userName"`
 	Password string `toml:"password"`
+	LogLevel string `toml:"logLevel"` // normal: 只打印重要信息, debug: 打印每个请求的代理
 }
 
 type TaskConfig struct {
