@@ -212,10 +212,9 @@ func main() {
 				fmt.Println(utils.ColorYellow + "按回车键随机切换到下一个代理IP，输入 s 回车查看统计..." + utils.ColorReset)
 				continue
 			}
-			utils.SetNextProxyIndex()
-			currentIndex := utils.GetCurrentProxyIndex()
-			if currentIndex >= 0 && len(utils.EffectiveList) > 0 {
-				fmt.Printf(utils.ColorGreen+"已随机切换到代理IP: %s (剩余可用: %d)\n"+utils.ColorReset, utils.EffectiveList[currentIndex], len(utils.EffectiveList))
+			addr, total := utils.SwitchAndGetProxy()
+			if addr != "" {
+				fmt.Printf(utils.ColorGreen+"已随机切换到代理IP: %s (剩余可用: %d)\n"+utils.ColorReset, addr, total)
 			} else {
 				fmt.Println(utils.ColorRed + "没有可用的代理IP" + utils.ColorReset)
 			}

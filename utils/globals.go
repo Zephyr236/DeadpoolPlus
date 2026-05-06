@@ -37,29 +37,17 @@ var (
 	// 优雅关闭
 	ShutdownChan chan struct{}
 	ActiveConns  int32 // 当前活跃连接数
-	activeMu     sync.Mutex
 )
 
-// GetCurrentProxyIndex 获取当前随机选择的代理索引
-func GetCurrentProxyIndex() int {
+// SwitchAndGetProxy 随机切换代理并原子性返回新地址和当前可用总数
+func SwitchAndGetProxy() (addr string, total int) {
 	mu.Lock()
 	defer mu.Unlock()
 	if len(EffectiveList) == 0 {
-		return -1
+		return "", 0
 	}
-	// 随机选择一个索引
 	proxyIndex = rand.Intn(len(EffectiveList))
-	return proxyIndex
-}
-
-// SetNextProxyIndex 随机选择下一个代理索引
-func SetNextProxyIndex() {
-	mu.Lock()
-	defer mu.Unlock()
-	if len(EffectiveList) > 0 {
-		// 随机选择一个索引
-		proxyIndex = rand.Intn(len(EffectiveList))
-	}
+	return EffectiveList[proxyIndex], len(EffectiveList)
 }
 
 func Banner() {

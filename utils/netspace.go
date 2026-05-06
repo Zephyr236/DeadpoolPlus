@@ -35,12 +35,22 @@ func GetSocksFromQuake(quake QUAKEConfig) {
 		fmt.Println("QUAKE:", data["message"])
 		return
 	}
-	arr := data["data"].([]interface{})
+	arr, ok := data["data"].([]interface{})
+	if !ok {
+		fmt.Println("quake: 返回数据格式异常")
+		return
+	}
 	fmt.Println("+++quake数据已取+++")
 	for _, item := range arr {
-		itemMap := item.(map[string]interface{})
-		ip := itemMap["ip"].(string)
-		port := itemMap["port"].(float64)
+		itemMap, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		ip, ok1 := itemMap["ip"].(string)
+		port, ok2 := itemMap["port"].(float64)
+		if !ok1 || !ok2 {
+			continue
+		}
 		addSocks(ip + ":" + strconv.FormatFloat(port, 'f', -1, 64))
 	}
 }
@@ -71,11 +81,23 @@ func GetSocksFromFofa(fofa FOFAConfig) {
 		fmt.Println("FOFA:", data["errmsg"])
 		return
 	}
-	array := data["results"].([]interface{})
+	array, ok := data["results"].([]interface{})
+	if !ok {
+		fmt.Println("FOFA: 返回数据格式异常")
+		return
+	}
 	fmt.Println("+++fofa数据已取+++")
 	for _, itemArray := range array {
-		itemSlice := itemArray.([]interface{})
-		addSocks(itemSlice[0].(string) + ":" + itemSlice[1].(string))
+		itemSlice, ok := itemArray.([]interface{})
+		if !ok || len(itemSlice) < 2 {
+			continue
+		}
+		ip, ok1 := itemSlice[0].(string)
+		port, ok2 := itemSlice[1].(string)
+		if !ok1 || !ok2 {
+			continue
+		}
+		addSocks(ip + ":" + port)
 	}
 
 }
@@ -111,17 +133,35 @@ func GetSocksFromHunter(hunter HUNTERConfig) {
 			return
 		}
 
-		rsData := data["data"].(map[string]interface{})
-		total := rsData["total"].(float64)
+		rsData, ok := data["data"].(map[string]interface{})
+		if !ok {
+			fmt.Println("HUNTER: 返回数据格式异常")
+			return
+		}
+		total, ok := rsData["total"].(float64)
+		if !ok {
+			fmt.Println("HUNTER: 返回total字段格式异常")
+			break
+		}
 		if total == 0 {
 			fmt.Println("HUNTER:xxx根据配置语法,未取到数据xxx")
 			break
 		}
-		arr := rsData["arr"].([]interface{})
+		arr, ok := rsData["arr"].([]interface{})
+		if !ok {
+			fmt.Println("HUNTER: 返回arr字段格式异常")
+			break
+		}
 		for _, item := range arr {
-			itemMap := item.(map[string]interface{})
-			ip := itemMap["ip"].(string)
-			port := itemMap["port"].(float64)
+			itemMap, ok := item.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			ip, ok1 := itemMap["ip"].(string)
+			port, ok2 := itemMap["port"].(float64)
+			if !ok1 || !ok2 {
+				continue
+			}
 			exeData++
 			addSocks(ip + ":" + strconv.FormatFloat(port, 'f', -1, 64))
 		}

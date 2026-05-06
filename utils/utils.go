@@ -197,12 +197,6 @@ func GetMaxFailCount() int {
 	return getMaxFailCount()
 }
 
-// IncrActiveConns 增加活跃连接计数
-func IncrActiveConns() {
-	// 注意：使用 atomic 包操作，这里用 mutex 保护
-	// 为简化，在 transmitReqFromClient 中直接处理
-}
-
 // GetActiveConns 获取当前活跃连接数（用于优雅关闭）
 func GetActiveConns() int32 {
 	return ActiveConns
@@ -375,7 +369,9 @@ func CheckSocks(checkSocks CheckSocksConfig, socksListParam []string) {
 	mu.Lock()
 	EffectiveList = make([]string, len(tmpEffectiveList))
 	copy(EffectiveList, tmpEffectiveList)
-	proxyIndex = rand.Intn(len(tmpEffectiveList)) // 随机初始化索引
+	if len(tmpEffectiveList) > 0 {
+		proxyIndex = rand.Intn(len(tmpEffectiveList))
+	}
 	mu.Unlock()
 	// 初始化/更新代理统计信息
 	InitProxyStats(EffectiveList)
@@ -540,21 +536,11 @@ func delInvalidProxy(proxy string) bool {
 	for i, p := range EffectiveList {
 		if p == proxy {
 			EffectiveList = append(EffectiveList[:i], EffectiveList[i+1:]...)
-			if proxyIndex > i {
-				proxyIndex--
-			}
 			break
 		}
 	}
 	// 清理统计信息
 	delete(StatsMap, proxy)
-
-	// 确保 proxyIndex 不越界
-	if len(EffectiveList) == 0 {
-		proxyIndex = 0
-	} else if proxyIndex >= len(EffectiveList) {
-		proxyIndex = 0
-	}
 	return true
 }
 

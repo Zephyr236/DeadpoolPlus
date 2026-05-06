@@ -62,24 +62,27 @@ func TestGetNextProxyRandom(t *testing.T) {
 }
 
 func TestDelInvalidProxy(t *testing.T) {
-	// 设置测试数据
 	EffectiveList = []string{"127.0.0.1:1080", "127.0.0.2:1080", "127.0.0.3:1080"}
-	proxyIndex = 1 // 当前指向第二个元素
-	
-	// 删除第一个代理 (索引 0)
-	delInvalidProxy("127.0.0.1:1080")
-	
+	StatsMap = nil
+	MaxFailCount = 2 // 需要连续 2 次失败才删除
+
+	// 第一次失败：未达阈值，不应删除
+	removed := delInvalidProxy("127.0.0.1:1080")
+	if removed {
+		t.Error("Expected false on first failure (streak 1 < maxFail 2)")
+	}
+	if len(EffectiveList) != 3 {
+		t.Errorf("Expected 3 socks (no delete yet), got: %d", len(EffectiveList))
+	}
+
+	// 第二次失败：达到阈值，应触发删除
+	removed = delInvalidProxy("127.0.0.1:1080")
+	if !removed {
+		t.Error("Expected proxy to be removed on second failure when MaxFailCount=2")
+	}
 	if len(EffectiveList) != 2 {
 		t.Errorf("Expected 2 socks after delete, got: %d", len(EffectiveList))
 	}
-	
-	// proxyIndex (1) > i (0)，所以 proxyIndex-- 变成 0
-	// 现在指向新的第一个元素 "127.0.0.2:1080"
-	if proxyIndex != 0 {
-		t.Errorf("Expected proxyIndex=0, got: %d", proxyIndex)
-	}
-	
-	// 验证剩余代理
 	if EffectiveList[0] != "127.0.0.2:1080" || EffectiveList[1] != "127.0.0.3:1080" {
 		t.Errorf("Unexpected EffectiveList: %v", EffectiveList)
 	}
