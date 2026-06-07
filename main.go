@@ -91,7 +91,7 @@ func main() {
 	//开始检测代理存活性
 
 	utils.Timeout = config.CheckSocks.Timeout
-	utils.CheckSocks(config.CheckSocks, utils.SocksList)
+	utils.CheckProxy(config.CheckSocks, utils.SocksList)
 	//根据配置，定时检测内存中的代理存活信息
 	cron := cron.New()
 	periodicChecking := strings.TrimSpace(config.Task.PeriodicChecking)
@@ -102,7 +102,7 @@ func main() {
 			fmt.Printf(utils.ColorBlue + "\n===代理存活自检 开始===\n\n" + utils.ColorReset)
 			tempList := make([]string, len(utils.EffectiveList))
 			copy(tempList, utils.EffectiveList)
-			utils.CheckSocks(config.CheckSocks, tempList)
+			utils.CheckProxy(config.CheckSocks, tempList)
 			fmt.Printf(utils.ColorBlue + "\n===代理存活自检 结束===\n\n" + utils.ColorReset)
 		})
 	}
@@ -115,7 +115,7 @@ func main() {
 			utils.SocksList = utils.SocksList[:0]
 			utils.GetSocks(config)
 			fmt.Printf(utils.ColorCyan+"根据IP:PORT去重后，共发现%v个代理\n检测可用性中......\n"+utils.ColorReset, len(utils.SocksList))
-			utils.CheckSocks(config.CheckSocks, utils.SocksList)
+			utils.CheckProxy(config.CheckSocks, utils.SocksList)
 			if len(utils.EffectiveList) != 0 {
 				utils.WriteLinesToFile() //存活代理写入硬盘，以备下次启动直接读取
 			}
@@ -159,6 +159,18 @@ func main() {
 		fmt.Printf(utils.ColorRed+"本地监听服务启动失败：%v\n"+utils.ColorReset, err)
 		os.Exit(1)
 	}
+
+	// 文件触发统计：创建 .dump_stats 文件时打印代理统计
+	go func() {
+		triggerFile := ".dump_stats"
+		for {
+			if _, err := os.Stat(triggerFile); err == nil {
+				os.Remove(triggerFile)
+				utils.PrintStats()
+			}
+			time.Sleep(1 * time.Second)
+		}
+	}()
 
 	// 信号监听 goroutine：捕获 SIGINT/SIGTERM，执行优雅关闭
 	go func(listener net.Listener) {

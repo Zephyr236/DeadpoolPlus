@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// 从quake获取，结果为IP:PORT
+// 从quake获取，结果为 socks5://IP:PORT
 func GetSocksFromQuake(quake QUAKEConfig) {
 	defer Wg.Done()
 	if quake.Switch != "open" {
@@ -51,55 +51,103 @@ func GetSocksFromQuake(quake QUAKEConfig) {
 		if !ok1 || !ok2 {
 			continue
 		}
-		addSocks(ip + ":" + strconv.FormatFloat(port, 'f', -1, 64))
+		addSocks("socks5://" + ip + ":" + strconv.FormatFloat(port, 'f', -1, 64))
 	}
 }
 
-// 从FOFA获取,结果为IP:PORT
+// 从FOFA获取，结果为 protocol://IP:PORT
 func GetSocksFromFofa(fofa FOFAConfig) {
 	defer Wg.Done()
 	if fofa.Switch != "open" {
 		fmt.Println("---未开启fofa---")
 		return
 	}
-	fmt.Printf("***已开启fofa,将根据配置条件从fofa中获取%d条数据，然后进行有效性检测***\n", fofa.ResultSize)
 
-	params := map[string]string{
-		"email":   fofa.Email,
-		"key":     fofa.Key,
-		"fields":  "ip,port",
-		"qbase64": base64.URLEncoding.EncodeToString([]byte(fofa.QueryString)),
-		"size":    strconv.Itoa(fofa.ResultSize)}
-	content, err := fetchContent(fofa.APIURL, "GET", 60, params, nil, "")
-	if err != nil {
-		fmt.Println("访问fofa异常", err)
-		return
+	totalSocks5 := len(fofa.QueryStrings)
+	totalHTTP := len(fofa.HTTPQueryStrings)
+	fmt.Printf("***已开启fofa, SOCKS5 查询 %d 条 + HTTP 查询 %d 条，每条最多获取 %d 条数据***\n", totalSocks5, totalHTTP, fofa.ResultSize)
+
+	totalCollected := 0
+
+	// 交替执行 SOCKS5 和 HTTP 查询，避免连续同类查询触发 API 限流
+	maxLen := totalSocks5
+	if totalHTTP > maxLen {
+		maxLen = totalHTTP
 	}
-	var data map[string]interface{}
-	json.Unmarshal([]byte(content), &data)
-	if data["error"] == true {
-		fmt.Println("FOFA:", data["errmsg"])
-		return
-	}
-	array, ok := data["results"].([]interface{})
-	if !ok {
-		fmt.Println("FOFA: 返回数据格式异常")
-		return
-	}
-	fmt.Println("+++fofa数据已取+++")
-	for _, itemArray := range array {
-		itemSlice, ok := itemArray.([]interface{})
-		if !ok || len(itemSlice) < 2 {
-			continue
+	for i := 0; i < maxLen; i++ {
+		// SOCKS5 查询
+		if i < totalSocks5 {
+			qs := strings.TrimSpace(fofa.QueryStrings[i])
+			if qs != "" {
+				fmt.Printf("[FOFA-SOCKS5 %d/%d] 查询: %s\n", i+1, totalSocks5, qs)
+				count := fofaSingleQuery(fofa, qs, "socks5", "SOCKS5")
+				totalCollected += count
+			}
+			time.Sleep(2 * time.Second)
 		}
-		ip, ok1 := itemSlice[0].(string)
-		port, ok2 := itemSlice[1].(string)
-		if !ok1 || !ok2 {
-			continue
+		// HTTP 查询
+		if i < totalHTTP {
+			qs := strings.TrimSpace(fofa.HTTPQueryStrings[i])
+			if qs != "" {
+				fmt.Printf("[FOFA-HTTP %d/%d] 查询: %s\n", i+1, totalHTTP, qs)
+				count := fofaSingleQuery(fofa, qs, "http", "HTTP")
+				totalCollected += count
+			}
+			time.Sleep(2 * time.Second)
 		}
-		addSocks(ip + ":" + port)
 	}
 
+	fmt.Printf("+++fofa全部查询完成，共获取 %d 条数据（SOCKS5 + HTTP）+++\n", totalCollected)
+}
+
+// fofaSingleQuery 执行单条 FOFA 查询，支持超时重试，返回获取的代理数
+func fofaSingleQuery(fofa FOFAConfig, qs string, protocol string, label string) int {
+	for attempt := 1; attempt <= 2; attempt++ {
+		params := map[string]string{
+			"email":   fofa.Email,
+			"key":     fofa.Key,
+			"fields":  "ip,port",
+			"qbase64": base64.URLEncoding.EncodeToString([]byte(qs)),
+			"size":    strconv.Itoa(fofa.ResultSize)}
+		content, err := fetchContent(fofa.APIURL, "GET", 60, params, nil, "")
+		if err != nil {
+			if attempt == 1 {
+				fmt.Printf("FOFA-%s 查询超时，3秒后重试...\n", label)
+				time.Sleep(3 * time.Second)
+				continue
+			}
+			fmt.Printf("FOFA-%s 查询 [%s] 异常: %v\n", label, qs, err)
+			return 0
+		}
+		var data map[string]interface{}
+		json.Unmarshal([]byte(content), &data)
+		if data["error"] == true {
+			fmt.Println("FOFA:", data["errmsg"])
+			return 0
+		}
+		array, ok := data["results"].([]interface{})
+		if !ok {
+			fmt.Println("FOFA: 返回数据格式异常")
+			return 0
+		}
+		count := 0
+		for _, itemArray := range array {
+			itemSlice, ok := itemArray.([]interface{})
+			if !ok || len(itemSlice) < 2 {
+				continue
+			}
+			ip, ok1 := itemSlice[0].(string)
+			port, ok2 := itemSlice[1].(string)
+			if !ok1 || !ok2 {
+				continue
+			}
+			addSocks(protocol + "://" + ip + ":" + port)
+			count++
+		}
+		fmt.Printf("+++FOFA-%s 查询完成，获取 %d 条+++\n", label, count)
+		return count
+	}
+	return 0
 }
 
 // 从鹰图获取，结果为IP:PORT
@@ -163,7 +211,7 @@ func GetSocksFromHunter(hunter HUNTERConfig) {
 				continue
 			}
 			exeData++
-			addSocks(ip + ":" + strconv.FormatFloat(port, 'f', -1, 64))
+			addSocks("socks5://" + ip + ":" + strconv.FormatFloat(port, 'f', -1, 64))
 		}
 		if float64(exeData) >= total {
 			break
@@ -175,11 +223,11 @@ func GetSocksFromHunter(hunter HUNTERConfig) {
 	fmt.Println("+++hunter数据已取+++")
 }
 
-// 从本地文件获取，格式为IP:PORT
+// 从本地文件获取，格式为 protocol://IP:PORT（如 socks5://1.2.3.4:1080、http://5.6.7.8:8080）
 func GetSocksFromFile(socksFileName string) {
 	_, err := os.Stat(socksFileName)
 	if !os.IsNotExist(err) {
-		fmt.Println("***当前目录下存在" + socksFileName + ",将按行读取格式为IP:PORT的socks5代理***")
+		fmt.Println("***当前目录下存在" + socksFileName + ",将按行读取格式为 protocol://IP:PORT 的代理***")
 		file, err := os.Open(socksFileName)
 		if err != nil {
 			fmt.Println("读取文件"+socksFileName+"异常，略过该文件中的代理，异常信息为:", err)
@@ -197,9 +245,9 @@ func GetSocksFromFile(socksFileName string) {
 		}
 		// 检查扫描过程中是否发生了错误
 		if err := scanner.Err(); err != nil {
-			fmt.Println("Error reading file,请确认文件中的socks5代理是IP:PORT格式:", err)
+			fmt.Println("Error reading file,请确认文件中的代理是 protocol://IP:PORT 格式（如 socks5://1.2.3.4:1080）:", err)
 		}
 	} else {
-		fmt.Println(socksFileName + "文件不存在，将根据配置信息从网络空间测绘平台取socks5的代理")
+		fmt.Println(socksFileName + "文件不存在，将根据配置信息从网络空间测绘平台取代理")
 	}
 }

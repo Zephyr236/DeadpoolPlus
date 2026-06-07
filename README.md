@@ -1,192 +1,293 @@
 <img src="images/deadpool.png" style="zoom:30%;transform: scale(0.3);" width="35%" height="35%"/>
 
-deadpool代理池工具，可从**hunter**、**quake**、**fofa**等**网络空间测绘平台取高质量socks5**代理，或**本地导入socks5**代理，轮询使用代理进行流量转发。
-> **开发不易,如果觉得该项目对您有帮助, 麻烦点个Star吧，PS：考虑安全性或用最新功能优化的话，可自行clone源码进行编译，**
+# DeadpoolPlus — 全球多协议代理池
 
-**2026-04-29改动：**
+DeadpoolPlus 是 [Deadpool](https://github.com/thinkoaa/Deadpool) 的增强版，从 **FOFA**、**Hunter**、**Quake** 等网络空间测绘平台自动化采集 **SOCKS5 / HTTP** 代理，经存活检测后汇聚成本地代理池，供 Burp Suite、Proxifier、SwitchyOmega 等工具轮询切换出口 IP。
 
-1. 添加GoReleaser自动发版配置
+> 🚀 **核心增强：**
+> 1. **多协议支持** — 除 SOCKS5 外，新增 HTTP 代理支持（HTTP CONNECT 隧道），代理池容量大幅提升
+> 2. **FOFA 多国查询** — 按国家逐个查询，内置 42 个国家（排除 CN/HK/MO），每条查询可拉取最多 10000 条
+
+---
+
+## 更新日志
+
+**2026-06-07（DeadpoolPlus）**
+1. 🆕 多协议支持：上游代理从仅 SOCKS5 扩展到 **SOCKS5 + HTTP**（HTTP CONNECT 隧道）
+2. 代理地址格式统一为 `protocol://IP:PORT`（如 `socks5://1.2.3.4:1080`、`http://5.6.7.8:8080`）
+3. FOFA 新增 `httpQueryStrings` 配置，自动查询 42 个国家的 HTTP 代理
+4. 新增 `parseProxyURL`、`dialViaHTTPConnect`、`dialViaHTTPSConnect` 辅助函数
+5. `CheckSocks` → `CheckProxy`，健康检查支持多协议自动分发
+
+**2026-06-04（DeadpoolPlus）**
+1. FOFA 支持多查询语句：`queryString` → `queryStrings` 数组，按国家分别查询，绕过单次 10000 条上限
+2. 内置全球 184 个国家/地区查询列表（排除 CN/HK/MO），代理采集量从万级跃升至百万级
+
+**2026-04-29（原版）**
+1. 添加 GoReleaser 自动发版配置
 2. 代理健康检查优化 + 统计信息展示 + 优雅关闭
-3. 代理切换策略优化(随机轮询) + 配置验证功能
+3. 代理切换策略优化（随机轮询）+ 配置验证功能
 4. 修复 4 个 Bug + 日志分级功能
-5. 添加ANSI颜色输出 + 移除弃用的rand.Seed + 支持强制退出
+5. 添加 ANSI 颜色输出 + 移除弃用的 rand.Seed + 支持强制退出
 
-**2024-09-15改动：增加周期性任务：根据配置信息，定时检测存活、定时从网络空间取代理**
+**2024-09-15：** 增加周期性任务，定时检测存活、定时从网络空间取代理
 
-**2024-09-12改动：go环境改为了1.23 ,工具新增了socks5账号密码认证功能，配置文件[listener]下新增了userName和password字段**
+**2024-09-12：** Go 1.23，新增 SOCKS5 账号密码认证
 
-### +++免责声明+++
+---
 
-本工具仅面向合法授权的企业安全建设行为。
+## 免责声明
 
-在合法使用本工具时，您应确保该行为符合当地的法律法规，并且已经取得了足够的授权。
+本工具仅面向**合法授权**的企业安全建设行为。使用者应确保行为符合当地法律法规并已取得足够授权。非法使用产生的后果由使用者自行承担。
 
-如您在使用本工具的过程中存在任何非法行为，您需自行承担相应后果，我们将不承担任何法律及连带责任。
+---
 
-在安装并使用本工具前，请您务必审慎阅读、充分理解各条款内容，限制、免责条款或者其他涉及您重大权益的条款可能会以加粗、加下划线等形式提示您重点注意。 除非您已充分阅读、完全理解并接受本协议所有条款，否则，请您不要安装并使用本工具。您的使用行为或者您以其他任何明示或者默示方式表示接受本协议的，即视为您已阅读并同意本协议的约束。
+## 目录
 
+- [0x01 核心思路](#0x01-核心思路)
+- [0x02 效果展示](#0x02-效果展示)
+- [0x03 快速开始](#0x03-快速开始)
+- [0x04 配置说明](#0x04-配置说明)
+- [0x05 GitHub Action 自动化](#0x05-github-action-自动化)
+- [0x06 编译多平台二进制](#0x06-编译多平台二进制)
 
+---
 
-### 0x01 说明
+## 0x01 核心思路
 
-**提前总结：快速使用本工具，只需要修改配置文件中对应的网络空间测绘平台的key信息，直接命令行运行程序即可。**
+在攻防过程中 IP 被 ban 是家常便饭。DeadpoolPlus 解决的是一个经典问题：**如何白嫖海量高质量的 SOCKS5 代理，且不花钱。**
 
-在【明确获得合法授权】的前提下，大家一定遇到过攻防过程中IP被ban的情况，这时候，既想要数量可观的高质量代理，又不想花钱，怎么办？那么用本工具可以一定程度上解决这个问题。
+### 工作流程
 
-1、通过配置hunter、quake、fofa的api key，本工具会调用API提取网络空间中的socks5代理
-
-2、如果手头已有其他socks5代理，也可以直接写在同目录下的lastData.txt文件中，每行一个，格式为IP:PORT
-
-工具会把从网络空间测绘平台提取的socks5代理与lastData.txt中的代理进行去重+存活及有效性检测（按照配置的规则），然后把符合要求的代理存入lastData.txt中，每次都会从lastData.txt中读取、校验、使用，这时可以关闭从测绘平台对应的的开关。（当lastData.txt中的可用代理较少时，可以再启用配置文件中的对应设置，再从各测绘平台取数据，取完再关。）
-
-
-
-### 0x02 效果
-
-如图，同时开启了hunter、quake、fofa，lastData.txt中也放入了之前收集的代理，会根据config.toml中的配置信息做检测
-
-![](images/new.jpg)
-
-开启fofa、hunter、quake开关时，自动抓数据
-
-![](images/init.png)
-
-
-
-监听到请求后，会轮询收集的代理来转发
-
-![](images/polling.png)
-
-验证走socks5代理时的出口IP
-
-![](images/internetIP.png)
-
-目录爆破场景
-
-![](images/test.jpg)
-
-### 0x03 配置使用
-
-**命令行参数**
-
-Deadpool支持以下命令行参数：
-
-- `-h, --help`：显示帮助信息
-- `-c, --config <path>`：指定配置文件路径（默认：config.toml）
-- `-l, --lastdata <path>`：指定lastdata文件路径（默认：lastData.txt）。使用此选项时，不会重新从网络空间获取代理，只使用指定的文件中的代理。
-
-示例：
 ```
-./deadpool -c custom_config.toml -l my_proxies.txt
+┌──────────┐   ┌──────────┐   ┌──────────┐
+│  FOFA    │   │  Hunter  │   │  Quake   │    ← 网络空间测绘平台
+│ 184国查询│   │ (可选)    │   │ (可选)    │
+└────┬─────┘   └────┬─────┘   └────┬─────┘
+     │               │               │
+     └───────────────┼───────────────┘
+                     ▼
+         ┌───────────────────────┐
+         │  lastData.txt         │   ← 本地已有代理（可手动补充）
+         └───────────┬───────────┘
+                     ▼
+         ┌───────────────────────┐
+         │  去重 + 并发存活检测    │   ← 可配并发数/超时/关键字/地理围栏
+         └───────────┬───────────┘
+                     ▼
+         ┌───────────────────────┐
+         │  有效代理池            │   ← 写入 lastData.txt 持久化
+         └───────────┬───────────┘
+                     ▼
+         ┌───────────────────────┐
+         │  本地 SOCKS5 服务      │   ← 默认 127.0.0.1:10086
+         │  随机轮询 + 统计 + 淘汰 │
+         └───────────┬───────────┘
+                     ▼
+            外部工具接入使用
+     （Burp / Proxifier / SwitchyOmega / ...）
 ```
 
-**运行中切换代理IP**
+### DeadpoolPlus vs 原版 Deadpool
 
-在程序运行过程中，您可以通过按回车键切换到下一个可用代理IP。每次切换后，程序会显示当前使用的代理IP及其在代理列表中的位置。
+| 特性 | 原版 Deadpool | DeadpoolPlus |
+|---|---|---|
+| 上游代理协议 | 仅 SOCKS5 | **SOCKS5 + HTTP**（HTTP CONNECT 隧道） |
+| FOFA 查询 | 单条 `queryString` | `queryStrings` + `httpQueryStrings` 双数组 |
+| 单次最大采集量 | 10,000 条 | 42 × 10,000 × 2协议 ≈ **840,000 条** |
+| 国家覆盖 | 单个国家或 `country!="CN"` | 42 个高产国家逐一查询 |
+| 代理统计 | ✅ | ✅ |
+| 随机轮询 | ✅ | ✅ |
+| 连续失败淘汰 | ✅ | ✅ |
+| 优雅关闭 | ✅ | ✅ |
+| 地理围栏 | ✅ | ✅ |
 
-**运行中其他操作**
+---
 
-- 按 `s` 键：实时查看代理统计信息，包括每个代理的使用次数、成功次数、失败次数、成功率、平均响应时间、连续失败次数等
-- 按 `Ctrl+C` 或发送 `SIGTERM` 信号：触发优雅退出——先打印代理统计信息，再等待当前活跃连接处理完毕后再退出，避免中断正在进行中的请求
+## 0x02 效果展示
 
-**burp中配置**
+启动后自动从各平台拉取代理并进行存活检测：
+
+![启动](images/new.jpg)
+
+FOFA 多国轮询查询过程：
+
+![FOFA 查询](images/init.png)
+
+监听到请求后随机轮询代理转发：
+
+![轮询](images/polling.png)
+
+验证代理出口 IP：
+
+![出口 IP](images/internetIP.png)
+
+目录爆破场景（IP 被 ban 自动切下一个）：
+
+![爆破](images/test.jpg)
+
+---
+
+## 0x03 快速开始
+
+### 1. 配置 API Key
+
+编辑 `config.toml`，填入网络空间测绘平台的 API Key：
+
+```toml
+[FOFA]
+switch = 'open'                              # 启用
+apiUrl = 'https://fofa.info/api/v1/search/all'
+email = 'your@email.com'
+key = 'your-fofa-api-key'
+queryStrings = [...]                         # 已内置 184 个国家，开箱即用
+resultSize = 10000                           # 每条查询最大返回数
+
+[HUNTER]
+switch = 'open'
+# ... 填入 key
+
+[QUAKE]
+switch = 'open'
+# ... 填入 key
+```
+
+> **至少开启一个平台**即可运行。推荐主要靠 FOFA（覆盖最广），Hunter 和 Quake 作为补充。
+
+### 2. 运行
+
+```bash
+# 直接运行（使用默认 config.toml 和 lastData.txt）
+./deadpoolplus
+
+# 指定配置文件
+./deadpoolplus -c custom_config.toml
+
+# 只使用本地已有代理文件，不从平台拉取
+./deadpoolplus -l my_proxies.txt
+
+# 显示帮助
+./deadpoolplus -h
+```
+
+### 3. 在工具中配置代理
+
+将任意工具的 SOCKS5 代理指向：
+
+```
+socks5://127.0.0.1:10086
+```
+
+如果配置了用户名密码认证，填上即可。
+
+#### Burp Suite
 
 <img src="images/burp.png" style="zoom: 28%;" width="65%" height="65%"/>
 
-**Proxifier配置**
+#### Proxifier
 
 <img src="images/Proxifier.png" style="zoom:25%;transform: scale(0.25);" width="35%" height="35%" />
 
-**SwitchyOmega配置**
+#### SwitchyOmega
 
 <img src="images/SwitchyOmega.png" style="zoom:33%;" width="65%" height="65%" />
 
-其他工具使用时同理，指定socks5协议，IP、端口即可
+### 4. 运行中操作
 
-### 0x04 配置文件说明
+| 操作 | 功能 |
+|---|---|
+| 按 `Enter` | 随机切换到下一个代理 IP |
+| 按 `s` + `Enter` | 查看代理统计（使用次数/成功率/响应时间/连败） |
+| `Ctrl+C` 一次 | 优雅退出：打统计、等活跃连接完成（最多 30s） |
+| `Ctrl+C` 两次 | 强制退出 |
 
-简单使用的话，只需要修改对应的网络空间测绘平台的key信息即可。
+---
 
-**但需注意（没特殊需求可以忽略这里）：**
+## 0x04 配置说明
 
-1、若可能会发送恶意的payload，某些代理可能会阻断这类请求出站，需先关闭[checkSocks.checkGeolocate]中的switch（默认关闭），然后修改[checkSocks]中的checkURL为没有waf防护的任意公网地址，使用如/webshell.aspx?f=../../../../../../etc/passwd&q=1' or union select 1,2,3,4这类的测试语句，修改checkRspKeywords的值为目标正常返回内容中的字符片段，如此，可以获得不拦截恶意payload出站的代理。
-
-2、若针对性访问某地址，需要先关闭[checkSocks.checkGeolocate]中的switch（默认关闭），然后修改[checkSocks]中的checkURL为该地址，修改checkRspKeywords的值，确保只保留可以访问目标地址的代理。
-
-**1和2结合，就能不断收集、使用针对高可用代理。**
-
-config.toml详细说明如下：
+完整配置项参考 `config.toml`：
 
 ```toml
 [listener]
-#******非特殊情况，默认即可******本地监听端口，其他工具中的SOCKS5代理指定为该IP:PORT，即可轮询使用收集的代理
-IP='127.0.0.1'
-PORT='10086'
-userName=''#用户名和密码都不为空时，会进行认证，防止部署到vps上时，被其他人使用
-password='' 
+IP = '127.0.0.1'          # 监听地址
+PORT = 10086              # 监听端口
+userName = ''             # 认证用户名（空=不认证）
+password = ''             # 认证密码
+logLevel = 'normal'       # normal: 仅重要信息 / debug: 打印每个请求的代理
 
-[task]#周期性任务,若不为空，则会执行（请注意格式）
-periodicChecking=''#如0 */5 * * *为每5小时按照[checkSocks]中的配置检查一次内存中已有代理的存活性，如果为空，不单独周期性检查
-periodicGetSocks=''#如0 6 * * 6为每周六早上6点去通过fofa、hunter、quake的配置去取数据，顺便一起把本地历史存的也校验一下
+[task]
+periodicChecking = ''     # cron 表达式，定期检测内存中代理存活，例: 0 */5 * * *
+periodicGetSocks = ''     # cron 表达式，定期重新从平台拉取代理，例: 0 6 * * 6
 
-[checkSocks]#******非特殊情况，默认即可******
-#通过访问实际url来验证代理的可用性
-checkURL='https://www.baidu.com'#可以配置为要访问的目标地址，确保所有代理都能访问到目标地址
-checkRspKeywords='百度一下'#上面地址原始响应中的某个字符串，用来验证通过代理访问目标时有无因某种原因被ban掉。
-maxConcurrentReq='30'#同时最多N个并发通过代理访问上面的地址，检测socks5代理是否可用，可根据网络环境调整。云主机的话开500、1000都可以，本机的话，开三五十差不多。
-timeout='6'#单位秒，验证socks5代理的超时时间,建议保持在5或6，检查及使用代理访问上面的地址时，超过这个时间，判定无效
-maxFailCount='3'#连续失败N次才将该代理从池中移除，默认3。防止偶发网络抖动误删优质代理
+[checkSocks]
+checkURL = 'https://www.baidu.com'    # 检测用的 URL
+checkRspKeywords = '百度一下'           # 响应中应包含的关键字
+maxConcurrentReq = 200                 # 并发检测数（VPS 可设 500-1000）
+timeout = 6                            # 超时（秒）
+maxFailCount = 3                       # 连续失败 N 次后淘汰
 
 [checkSocks.checkGeolocate]
-##******非特殊情况，默认即可******通过访问返回IP归属地信息的URL和关键字判断，来排除某些代理，如：某些情况下，真正要访问的系统限制只有大陆地区IP可以访问
-switch='close' #open:启用，非open:禁用
-checkURL='https://qifu-api.baidubce.com/ip/local/geo/v1/district'#访问此url获取IP归属地信息，出于某些原因，建议用国内的公司的相关接口。
-#下面的两个的值，需要根据上面url的返回内容填写
-excludeKeywords=['澳门','香港','台湾']#格式如：['澳门','香港']优先级最高，返回的body内容中，存在任一关键字，则跳过
-includeKeywords=['中国']#格式如：['中国','北京']则只获取出口IP为中国北京的代理，如果是['中国'],排除上述关键字的前提下则获取出口IP为中国所有其他地区代理
+switch = 'close'                       # 地理围栏开关
+checkURL = 'https://qifu-api.baidubce.com/ip/local/geo/v1/district'
+excludeKeywords = ['澳门','香港','台湾']
+includeKeywords = ['中国']
 
-[FOFA] 
-switch = 'close' #open:启用，非open:禁用
-apiUrl='https://fofa.info/api/v1/search/all'
-email = 'xxxxx@xxx.com'
-key = '54eddce1xxxxxxxxxxxxxxxx49836612'
-queryString = 'protocol=="socks5" && country="CN" && banner="Method:No Authentication"'#官方语法
-resultSize='500' #此处最大为10000,需小于等于从官网web界面看到的结果数量
+[FOFA]                                 # ★ DeadpoolPlus 核心增强
+switch = 'open'
+apiUrl = 'https://fofa.info/api/v1/search/all'
+email = 'your@email.com'
+key = 'your-key'
+queryStrings = [                       # 按国家数组查询，已内置 184 国
+    'protocol=="socks5" && country="US" && banner="Method:No Authentication"',
+    'protocol=="socks5" && country="JP" && banner="Method:No Authentication"',
+    # ... 更多见 config.toml
+]
+resultSize = 10000                     # 每条最多 10000
 
-[QUAKE] 
-switch = 'close' 
-apiUrl='https://quake.360.net/api/v3/search/quake_service'
-key = '962xxx36-xxxxxxxxxxxxxxxx-5efxxxxfc90b0a'
-queryString = 'service:socks5  AND country: "CN" AND response:"No authentication"'#官方语法
-resultSize='500' #此处最大为10000,需小于等于从官网web界面看到的结果数量
+[QUAKE]
+switch = 'close'
+apiUrl = 'https://quake.360.net/api/v3/search/quake_service'
+key = 'your-key'
+queryString = 'service:socks5 AND country:"CN" AND response:"No authentication"'
+resultSize = 500
 
 [HUNTER]
 switch = 'close'
-apiUrl='https://hunter.qianxin.com/openApi/search'
-key = '9c1698e0xxxxxxxxxxxxxxxxa6e90758edcxxxx23533f9xxxxxxxxxxxxxxxx9ce18'
-queryString = 'protocol=="socks5"&&protocol.banner="No authentication"&&ip.country="CN"'#官方语法
-resultSize='300' #最小为100,按100条/每页翻页，最大值需小于从官网web界面看到的结果数量，值需为100的整倍数，如200、300、1000、2000等
+apiUrl = 'https://hunter.qianxin.com/openApi/search'
+key = 'your-key'
+queryString = 'protocol=="socks5"&&protocol.banner="No authentication"&&ip.country="CN"'
+resultSize = 200                       # 需为 100 的倍数
 ```
 
-### 0x05 GitHub Action 自动化搜集代理工具
+### 进阶技巧
 
-针对于个人使用场景，如果需要该脚本在GitHub自动获取并更新 lastData.txt, 可以按照以下流程进行设置：
+1. **筛选不拦截恶意 Payload 的代理：** 关闭地理围栏，将 `checkURL` 改为无 WAF 的公网地址，URL 中带测试 Payload，`checkRspKeywords` 设为目标正常返回的字符片段。
 
-1. import repository
+2. **针对特定目标筛选：** 将 `checkURL` 设为目标地址，`checkRspKeywords` 设为只有通过代理能访问目标时才会出现的字符串。
 
-由于 fork 仓库无法无法修改仓库的可见性，也就是无法将仓库设置成私有形式。所以需要进行import.
+---
 
-> **开发不易,如果觉得该项目对您有帮助, 麻烦点个Star吧**
+## 0x05 GitHub Action 自动化
 
-![alt text](./images/import1.png)
+利用 GitHub Action 定时运行 DeadpoolPlus，自动更新 `lastData.txt`。
 
-![alt text](./images/import2.png)
+### 1. Import 仓库
 
-**记得勾选 Private!!!**
+由于 fork 无法修改仓库可见性，需要 **Import** 为本仓库使其变成私有。
 
-2. 设置 workflows 脚本
+![Import 1](./images/import1.png)
+![Import 2](./images/import2.png)
 
-将 import 的仓库clone到本地, 配置 action workflows 脚本到 `.github/workflows/schedule.yml`目录：
+> ⚠️ **务必勾选 Private！** 否则 API Key 会随公开仓库泄漏。
+
+### 2. 配置 Action 写入权限
+
+![权限 1](./images/right1.png)
+![权限 2](./images/right2.png)
+
+### 3. 添加 Workflow
+
+`.github/workflows/schedule.yml`：
 
 ```yaml
 name: schedule
@@ -199,49 +300,43 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out code into the Go module directory
+      - name: Check out code
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
-      - name: "Set up Go"
+      - name: Set up Go
         uses: actions/setup-go@v4
         with:
           go-version: 1.23.x
           check-latest: true
           cache: true
-      
-      - name: Run search
-        run: |
-          bash entrypoint.sh
 
-        
-      - name: Commit and push if it changed
+      - name: Run search
+        run: bash entrypoint.sh
+
+      - name: Commit and push if changed
         run: |
-          git config --global user.name 'xxx'
-          git config --global user.email 'xxxx'
+          git config --global user.name 'your-name'
+          git config --global user.email 'your-email'
           if git diff --quiet -- lastData.txt; then
-           echo "lastData.txt has not been modified."
+            echo "lastData.txt has not been modified."
           else
-           git add lastData.txt
-           git commit -m "update lastData.txt"
-           git push
+            git add lastData.txt
+            git commit -m "update lastData.txt"
+            git push
           fi
 ```
 
--  示例脚本的运行频率为 `每五天运行一次`, 可以根据需要，自行调整 `cron: "0 0 */5 * *"`
+### 4. 启动脚本
 
-- 根据自己情况替换 `user.name 'xxx'` 和 `user.email 'xxxx'` 的 `xxx`
-
-
-3. 设置启动脚本 `entrypoint.sh`
+`entrypoint.sh`：
 
 ```sh
 #!/bin/bash
-go build -o deadpool main.go
-timeout --preserve-status 150 ./deadpool
+go build -o deadpoolplus main.go
+timeout --preserve-status 150 ./deadpoolplus
 status=$?
 if [ $status -eq 124 ]; then
     echo "The command timed out."
@@ -251,20 +346,47 @@ fi
 exit 0
 ```
 
-- 其中需要注意：由于项目是以阻塞形式的, 所以这里使用了 `timeout` 进行超时退出. 你可以根据跑的数据量设置 `entrypoint.sh` 脚本中的 `150` 为需要的值, 当然越大越好，否则如果地址还未验证完，程序退出的话做不会进行 `lastData.txt` 的写入操作.
+> `timeout` 值根据数据量调整。FOFA 184 个国家查询耗时会比原版长很多，建议设足够大。
 
-4. 配置 Action 的写入权限.
+### 5. 完整目录结构
 
-![alt text](./images/right1.png)
+![结构](./images/struct.png)
 
-![alt text](./images/right2.png)
+---
 
-5. 修改 `config.toml` 配置文件
+## 0x06 编译多平台二进制
 
-根据自己情况替换各种 key 就行了. 
+```bash
+# Linux x64
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o build/deadpoolplus_linux_amd64 main.go
 
-**注意：一定记得讲仓库设置为私有, 否则 key 会泄漏！！！**
+# Linux ARM64
+CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o build/deadpoolplus_linux_arm64 main.go
 
-完整目录结构：
+# Windows x64
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o build/deadpoolplus_windows_amd64.exe main.go
 
-![alt text](./images/struct.png)
+# Windows ARM64
+CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -ldflags="-s -w" -o build/deadpoolplus_windows_arm64.exe main.go
+
+# macOS Intel
+CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o build/deadpoolplus_darwin_amd64 main.go
+
+# macOS Apple Silicon
+CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o build/deadpoolplus_darwin_arm64 main.go
+```
+
+或使用 GoReleaser：`goreleaser build --snapshot --clean`
+
+---
+
+## 致谢
+
+- [Deadpool](https://github.com/thinkoaa/Deadpool) — 原作者 [thinkoaa](https://github.com/thinkoaa)，本工具在此基础上增强而来
+- [go-socks5](https://github.com/armon/go-socks5) — SOCKS5 协议实现
+- [go-toml](https://github.com/pelletier/go-toml) — TOML 解析
+- [cron](https://github.com/robfig/cron) — Cron 调度
+
+---
+
+> **如果觉得有用，给原版和 DeadpoolPlus 都点个 Star ⭐**

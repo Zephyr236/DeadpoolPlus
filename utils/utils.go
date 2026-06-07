@@ -20,6 +20,104 @@ import (
 	"golang.org/x/net/proxy"
 )
 
+// parseProxyURL 解析代理 URL，返回协议和地址
+// "socks5://1.2.3.4:1080" → ("socks5", "1.2.3.4:1080")
+// "http://5.6.7.8:8080"   → ("http", "5.6.7.8:8080")
+// "1.2.3.4:1080"          → ("socks5", "1.2.3.4:1080") 兼容旧格式
+func parseProxyURL(proxyURL string) (scheme string, address string) {
+	if strings.Contains(proxyURL, "://") {
+		u, err := url.Parse(proxyURL)
+		if err != nil {
+			return "socks5", proxyURL
+		}
+		return u.Scheme, u.Host
+	}
+	return "socks5", proxyURL
+}
+
+// dialViaHTTPConnect 通过 HTTP CONNECT 代理建立隧道连接
+func dialViaHTTPConnect(proxyAddr, targetAddr string, timeout time.Duration) (net.Conn, error) {
+	conn, err := net.DialTimeout("tcp", proxyAddr, timeout)
+	if err != nil {
+		return nil, err
+	}
+
+	connectReq := fmt.Sprintf("CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", targetAddr, targetAddr)
+	if _, err = conn.Write([]byte(connectReq)); err != nil {
+		conn.Close()
+		return nil, err
+	}
+
+	br := bufio.NewReader(conn)
+	line, err := br.ReadString('\n')
+	if err != nil {
+		conn.Close()
+		return nil, fmt.Errorf("HTTP CONNECT read error: %v", err)
+	}
+	if !strings.Contains(line, "200") {
+		conn.Close()
+		return nil, fmt.Errorf("HTTP CONNECT failed: %s", strings.TrimSpace(line))
+	}
+
+	// 读取剩余响应头直到空行
+	for {
+		headerLine, err := br.ReadString('\n')
+		if err != nil {
+			conn.Close()
+			return nil, fmt.Errorf("HTTP CONNECT header read error: %v", err)
+		}
+		if headerLine == "\r\n" || headerLine == "\n" {
+			break
+		}
+	}
+
+	return conn, nil
+}
+
+// dialViaHTTPSConnect 通过 HTTPS CONNECT 代理建立隧道连接（代理本身用 TLS）
+func dialViaHTTPSConnect(proxyAddr, targetAddr string, timeout time.Duration) (net.Conn, error) {
+	rawConn, err := net.DialTimeout("tcp", proxyAddr, timeout)
+	if err != nil {
+		return nil, err
+	}
+
+	tlsConn := tls.Client(rawConn, &tls.Config{InsecureSkipVerify: true})
+	if err := tlsConn.Handshake(); err != nil {
+		rawConn.Close()
+		return nil, err
+	}
+
+	connectReq := fmt.Sprintf("CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", targetAddr, targetAddr)
+	if _, err = tlsConn.Write([]byte(connectReq)); err != nil {
+		tlsConn.Close()
+		return nil, err
+	}
+
+	br := bufio.NewReader(tlsConn)
+	line, err := br.ReadString('\n')
+	if err != nil {
+		tlsConn.Close()
+		return nil, fmt.Errorf("HTTPS CONNECT read error: %v", err)
+	}
+	if !strings.Contains(line, "200") {
+		tlsConn.Close()
+		return nil, fmt.Errorf("HTTPS CONNECT failed: %s", strings.TrimSpace(line))
+	}
+
+	for {
+		headerLine, err := br.ReadString('\n')
+		if err != nil {
+			tlsConn.Close()
+			return nil, fmt.Errorf("HTTPS CONNECT header read error: %v", err)
+		}
+		if headerLine == "\r\n" || headerLine == "\n" {
+			break
+		}
+	}
+
+	return tlsConn, nil
+}
+
 // 颜色常量 (ANSI escape codes)
 const (
 	ColorReset  = "\033[0m"
@@ -272,7 +370,7 @@ func RemoveDuplicates(list *[]string) {
 	*list = result
 }
 
-func CheckSocks(checkSocks CheckSocksConfig, socksListParam []string) {
+func CheckProxy(checkSocks CheckSocksConfig, socksListParam []string) {
 	startTime := time.Now()
 	maxConcurrentReq := checkSocks.MaxConcurrentReq
 	timeout := checkSocks.Timeout
@@ -307,14 +405,64 @@ func CheckSocks(checkSocks CheckSocksConfig, socksListParam []string) {
 				<-semaphore
 
 			}()
-			socksProxy := "socks5://" + proxyAddr
-			proxy := func(_ *http.Request) (*url.URL, error) {
-				return url.Parse(socksProxy)
-			}
+
+			// 解析代理协议
+			scheme, addr := parseProxyURL(proxyAddr)
+
+			// 构建 http.Client，根据协议选择代理方式
 			tr := &http.Transport{
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-				Proxy:           proxy,
 			}
+
+			switch scheme {
+			case "socks5", "http":
+				// Go 的 http.Transport.Proxy 原生支持 socks5:// 和 http://
+				proxyURL := scheme + "://" + addr
+				tr.Proxy = func(_ *http.Request) (*url.URL, error) {
+					return url.Parse(proxyURL)
+				}
+			case "https":
+				// HTTPS 代理：先 TLS 连接到代理，再发送 CONNECT
+				tr.Proxy = nil // 不用默认代理，改用自定义 DialContext
+				tr.DialContext = func(ctx context.Context, network, target string) (net.Conn, error) {
+					rawConn, err := (&net.Dialer{Timeout: time.Duration(timeout) * time.Second}).DialContext(ctx, "tcp", addr)
+					if err != nil {
+						return nil, err
+					}
+					tlsConn := tls.Client(rawConn, &tls.Config{InsecureSkipVerify: true})
+					if err := tlsConn.HandshakeContext(ctx); err != nil {
+						rawConn.Close()
+						return nil, err
+					}
+					connectReq := fmt.Sprintf("CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", target, target)
+					if _, err := tlsConn.Write([]byte(connectReq)); err != nil {
+						tlsConn.Close()
+						return nil, err
+					}
+					br := bufio.NewReader(tlsConn)
+					line, err := br.ReadString('\n')
+					if err != nil {
+						tlsConn.Close()
+						return nil, err
+					}
+					if !strings.Contains(line, "200") {
+						tlsConn.Close()
+						return nil, fmt.Errorf("HTTPS CONNECT failed: %s", strings.TrimSpace(line))
+					}
+					for {
+						h, err := br.ReadString('\n')
+						if err != nil {
+							tlsConn.Close()
+							return nil, err
+						}
+						if h == "\r\n" || h == "\n" {
+							break
+						}
+					}
+					return tlsConn, nil
+				}
+			}
+
 			client := &http.Client{
 				Transport: tr,
 				Timeout:   time.Duration(timeout) * time.Second,
@@ -327,15 +475,12 @@ func CheckSocks(checkSocks CheckSocksConfig, socksListParam []string) {
 			req.Header.Add("referer", "https://www.baidu.com/s?ie=utf-8&f=8&rsv_bp=1&rsv_idx=1&tn=baidu&wd=ip&fenlei=256&rsv_pq=0xc23dafcc00076e78&rsv_t=6743gNBuwGYWrgBnSC7Yl62e52x3CKQWYiI10NeKs73cFjFpwmqJH%2FOI%2FSRG&rqlang=en&rsv_dl=tb&rsv_enter=1&rsv_sug3=5&rsv_sug1=5&rsv_sug7=101&rsv_sug2=0&rsv_btype=i&prefixsug=ip&rsp=4&inputT=2165&rsv_sug4=2719")
 			resp, err := client.Do(req)
 			if err != nil {
-				// fmt.Printf("%v: %v\n", proxyAddr, err)
-				// fmt.Printf("+++++++代理不可用：%v+++++++\n", proxyAddr)
 				return
 			}
 			defer resp.Body.Close()
 
 			body, err := io.ReadAll(resp.Body)
 			if err != nil {
-				// fmt.Printf("%v: %v\n", proxyAddr, err)
 				return
 			}
 			stringBody := string(body)
@@ -347,14 +492,12 @@ func CheckSocks(checkSocks CheckSocksConfig, socksListParam []string) {
 				//直接循环要排除的关键字，任一命中就返回
 				for _, keyword := range checkGeolocateConfig.ExcludeKeywords {
 					if strings.Contains(stringBody, keyword) {
-						// fmt.Println("忽略：" + proxyAddr + "包含：" + keyword.(string))
 						return
 					}
 				}
 				//直接循环要必须包含的关键字，任一未命中就返回
 				for _, keyword := range checkGeolocateConfig.IncludeKeywords {
 					if !strings.Contains(stringBody, keyword) {
-						// fmt.Println("忽略：" + proxyAddr + "未包含：" + keyword.(string))
 						return
 					}
 				}
@@ -428,27 +571,33 @@ func transmitReqFromClient(network string, address string) (net.Conn, error) {
 		}
 		timeout := time.Duration(Timeout) * time.Second
 
-		dialer := &net.Dialer{
-			Timeout: timeout,
+		scheme, addr := parseProxyURL(tempProxy)
+		startTime := time.Now()
+		var conn net.Conn
+		var err error
+
+		switch scheme {
+		case "socks5":
+			dialer := &net.Dialer{Timeout: timeout}
+			dialect, e := proxy.SOCKS5(network, addr, nil, dialer)
+			if e != nil {
+				err = e
+				break
+			}
+			conn, err = dialect.Dial(network, address)
+		case "http":
+			conn, err = dialViaHTTPConnect(addr, address, timeout)
+		case "https":
+			conn, err = dialViaHTTPSConnect(addr, address, timeout)
+		default:
+			err = fmt.Errorf("不支持的代理协议: %s", scheme)
 		}
 
-		startTime := time.Now()
-		dialect, err := proxy.SOCKS5(network, tempProxy, nil, dialer)
 		if err != nil {
-			// delInvalidProxy 内部原子化记录失败并判断是否移除
 			if delInvalidProxy(tempProxy) {
 				fmt.Printf(ColorYellow+"[%s] 代理 %s 连续失败已达上限，已移除，自动切换下一个..."+ColorReset+"\n", time.Now().Format("2006-01-02 15:04:05"), tempProxy)
 			} else {
 				fmt.Printf(ColorYellow+"[%s] 代理 %s 连接失败，连续失败 %d/%d"+ColorReset+"\n", time.Now().Format("2006-01-02 15:04:05"), tempProxy, getFailStreak(tempProxy), getMaxFailCount())
-			}
-			continue
-		}
-		conn, err := dialect.Dial(network, address)
-		if err != nil {
-			if delInvalidProxy(tempProxy) {
-				fmt.Printf(ColorYellow+"[%s] 代理 %s 连接目标失败已达上限，已移除，自动切换下一个..."+ColorReset+"\n", time.Now().Format("2006-01-02 15:04:05"), tempProxy)
-			} else {
-				fmt.Printf(ColorYellow+"[%s] 代理 %s 连接目标失败，连续失败 %d/%d"+ColorReset+"\n", time.Now().Format("2006-01-02 15:04:05"), tempProxy, getFailStreak(tempProxy), getMaxFailCount())
 			}
 			continue
 		}
@@ -544,7 +693,7 @@ func delInvalidProxy(proxy string) bool {
 	return true
 }
 
-// 从本地文件获取，格式为IP:PORT
+// 从各平台和本地文件获取代理（protocol://IP:PORT 格式）
 
 func GetSocks(config Config) {
 	GetSocksFromFile(LastDataFile)
@@ -558,6 +707,6 @@ func GetSocks(config Config) {
 	Wg.Add(1)
 	go GetSocksFromQuake(config.QUAKE)
 	Wg.Wait()
-	//根据IP:PORT去重，此步骤会存在同IP不同端口的情况，这种情况不再单独过滤，这种情况，最终的出口IP可能不一样
+	//去重（同一 IP:PORT 不同协议视为不同代理）
 	RemoveDuplicates(&SocksList)
 }
