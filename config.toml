@@ -81,7 +81,7 @@ proxyListUrls = [
     'https://sockslist.us/Raw',
     'https://raw.githubusercontent.com/trio666/proxy-checker/refs/heads/main/all.txt',
     'https://raw.githubusercontent.com/LoneKingCode/free-proxy-db/refs/heads/main/proxies/all.txt',
-    'https://raw.githubusercontent.com/monosans/proxy-list/refs/heads/main/proxies/all.txt'
+    'https://raw.githubusercontent.com/monosans/proxy-list/refs/heads/main/proxies/all.txt',
     'https://raw.githubusercontent.com/shubhamshendre/Free-Proxies/refs/heads/main/http.txt',
     'https://raw.githubusercontent.com/shubhamshendre/Free-Proxies/refs/heads/main/socks4.txt',
     'https://raw.githubusercontent.com/shubhamshendre/Free-Proxies/refs/heads/main/socks5.txt',
