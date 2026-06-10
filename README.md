@@ -225,48 +225,30 @@ userName = ''             # 认证用户名（空=不认证）
 password = ''             # 认证密码
 logLevel = 'normal'       # normal: 仅重要信息 / debug: 打印每个请求的代理
 
-[task]
-periodicChecking = ''     # cron 表达式，定期检测内存中代理存活，例: 0 */5 * * *
-periodicGetSocks = ''     # cron 表达式，定期重新从平台拉取代理，例: 0 6 * * 6
-
 [checkSocks]
-checkURL = 'https://www.baidu.com'    # 检测用的 URL
-checkRspKeywords = '百度一下'           # 响应中应包含的关键字
-maxConcurrentReq = 200                 # 并发检测数（VPS 可设 500-1000）
-timeout = 6                            # 超时（秒）
-maxFailCount = 3                       # 连续失败 N 次后淘汰
+checkURL = 'http://www.msftconnecttest.com/connecttest.txt'  # 检测URL（微软连通性测试，全球可达）
+checkRspKeywords = 'Microsoft Connect Test'                   # 响应必须包含的关键字
+maxConcurrentReq = 1000   # 并发检测数（VPS 500-1000）
+timeout = 3               # 超时秒数
+maxFailCount = 3          # 连续失败N次淘汰
 
-[checkSocks.checkGeolocate]
-switch = 'close'                       # 地理围栏开关
-checkURL = 'https://qifu-api.baidubce.com/ip/local/geo/v1/district'
-excludeKeywords = ['澳门','香港','台湾']
-includeKeywords = ['中国']
-
-[FOFA]                                 # ★ DeadpoolPlus 核心增强
+[FOFA]                    # ★ 核心：FOFA 空间测绘
 switch = 'open'
-apiUrl = 'https://fofa.info/api/v1/search/all'
 email = 'your@email.com'
-key = 'your-key'
-queryStrings = [                       # 按国家数组查询，已内置 184 国
-    'protocol=="socks5" && country="US" && banner="Method:No Authentication"',
-    'protocol=="socks5" && country="JP" && banner="Method:No Authentication"',
+key = 'your-fofa-key'
+queryStrings = [...]      # SOCKS5查询语句数组（24个高产国家）
+resultSize = 10000        # 每条查询最大返回数
+
+# ★ 代理池爬取：搜索公开代理池 → 爬取已维护代理
+poolQueryString = 'body="get all proxy from proxy pool"'
+poolResultSize = 10000
+
+# ★ 公开代理列表：从GitHub/API批量下载
+proxyListUrls = [
+    'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/refs/heads/master/socks5.txt',
+    'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/refs/heads/master/http.txt',
     # ... 更多见 config.toml
 ]
-resultSize = 10000                     # 每条最多 10000
-
-[QUAKE]
-switch = 'close'
-apiUrl = 'https://quake.360.net/api/v3/search/quake_service'
-key = 'your-key'
-queryString = 'service:socks5 AND country:"CN" AND response:"No authentication"'
-resultSize = 500
-
-[HUNTER]
-switch = 'close'
-apiUrl = 'https://hunter.qianxin.com/openApi/search'
-key = 'your-key'
-queryString = 'protocol=="socks5"&&protocol.banner="No authentication"&&ip.country="CN"'
-resultSize = 200                       # 需为 100 的倍数
 ```
 
 ### 进阶技巧
