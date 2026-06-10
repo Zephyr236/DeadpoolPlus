@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -64,45 +65,15 @@ func GetSocksFromFofa(fofa FOFAConfig) {
 	}
 
 	totalSocks5 := len(fofa.QueryStrings)
-	totalHTTP := len(fofa.HTTPQueryStrings)
-	fmt.Printf("***已开启fofa, SOCKS5 查询 %d 条 + HTTP 查询 %d 条，每条最多获取 %d 条数据***\n", totalSocks5, totalHTTP, fofa.ResultSize)
+	fmt.Printf("***已开启fofa, SOCKS5 查询 %d 条，每条最多获取 %d 条数据***\n", totalSocks5, fofa.ResultSize)
 
 	totalCollected := 0
-
-	// 交替执行 SOCKS5 和 HTTP 查询，避免连续同类查询触发 API 限流
-	maxLen := totalSocks5
-	if totalHTTP > maxLen {
-		maxLen = totalHTTP
-	}
-	for i := 0; i < maxLen; i++ {
-		// SOCKS5 查询
-		if i < totalSocks5 {
-			qs := strings.TrimSpace(fofa.QueryStrings[i])
-			if qs != "" {
-				fmt.Printf("[FOFA-SOCKS5 %d/%d] 查询: %s\n", i+1, totalSocks5, qs)
-				count := fofaSingleQuery(fofa, qs, "socks5", "SOCKS5")
-				totalCollected += count
-			}
-			time.Sleep(2 * time.Second)
+	for i, qs := range fofa.QueryStrings {
+		qs = strings.TrimSpace(qs)
+		if qs == "" {
+			continue
 		}
-		// HTTP 查询
-		if i < totalHTTP {
-			qs := strings.TrimSpace(fofa.HTTPQueryStrings[i])
-			if qs != "" {
-				fmt.Printf("[FOFA-HTTP %d/%d] 查询: %s\n", i+1, totalHTTP, qs)
-				count := fofaSingleQuery(fofa, qs, "http", "HTTP")
-				totalCollected += count
-			}
-			time.Sleep(2 * time.Second)
-		}
-	}
-
-	fmt.Printf("+++fofa全部查询完成，共获取 %d 条数据（SOCKS5 + HTTP）+++\n", totalCollected)
-}
-
-// fofaSingleQuery 执行单条 FOFA 查询，支持超时重试，返回获取的代理数
-func fofaSingleQuery(fofa FOFAConfig, qs string, protocol string, label string) int {
-	for attempt := 1; attempt <= 2; attempt++ {
+		fmt.Printf("[FOFA-SOCKS5 %d/%d] 查询: %s\n", i+1, totalSocks5, qs)
 		params := map[string]string{
 			"email":   fofa.Email,
 			"key":     fofa.Key,
@@ -111,24 +82,19 @@ func fofaSingleQuery(fofa FOFAConfig, qs string, protocol string, label string) 
 			"size":    strconv.Itoa(fofa.ResultSize)}
 		content, err := fetchContent(fofa.APIURL, "GET", 60, params, nil, "")
 		if err != nil {
-			if attempt == 1 {
-				fmt.Printf("FOFA-%s 查询超时，3秒后重试...\n", label)
-				time.Sleep(3 * time.Second)
-				continue
-			}
-			fmt.Printf("FOFA-%s 查询 [%s] 异常: %v\n", label, qs, err)
-			return 0
+			fmt.Printf("FOFA-SOCKS5 查询 [%s] 异常: %v\n", qs, err)
+			continue
 		}
 		var data map[string]interface{}
 		json.Unmarshal([]byte(content), &data)
 		if data["error"] == true {
 			fmt.Println("FOFA:", data["errmsg"])
-			return 0
+			continue
 		}
 		array, ok := data["results"].([]interface{})
 		if !ok {
 			fmt.Println("FOFA: 返回数据格式异常")
-			return 0
+			continue
 		}
 		count := 0
 		for _, itemArray := range array {
@@ -141,13 +107,165 @@ func fofaSingleQuery(fofa FOFAConfig, qs string, protocol string, label string) 
 			if !ok1 || !ok2 {
 				continue
 			}
-			addSocks(protocol + "://" + ip + ":" + port)
+			addSocks("socks5://" + ip + ":" + port)
 			count++
 		}
-		fmt.Printf("+++FOFA-%s 查询完成，获取 %d 条+++\n", label, count)
-		return count
+		totalCollected += count
+		fmt.Printf("+++FOFA-SOCKS5 查询完成，获取 %d 条+++\n", count)
+		if i < totalSocks5-1 {
+			time.Sleep(2 * time.Second)
+		}
 	}
-	return 0
+	fmt.Printf("+++fofa SOCKS5 查询完成，共获取 %d 条+++\n", totalCollected)
+}
+
+// GetProxiesFromPools 从 FOFA 搜索公开代理池并爬取已维护好的代理
+func GetProxiesFromPools(fofa FOFAConfig) {
+	defer Wg.Done()
+	if fofa.Switch != "open" || fofa.PoolQuery == "" {
+		return
+	}
+
+	fmt.Printf("***搜索代理池: %s***\n", fofa.PoolQuery)
+	qs := fofa.PoolQuery
+	params := map[string]string{
+		"email":   fofa.Email,
+		"key":     fofa.Key,
+		"fields":  "ip,port",
+		"qbase64": base64.URLEncoding.EncodeToString([]byte(qs)),
+		"size":    strconv.Itoa(fofa.PoolResultSize)}
+	content, err := fetchContent(fofa.APIURL, "GET", 60, params, nil, "")
+	if err != nil {
+		fmt.Printf("代理池搜索异常: %v\n", err)
+		return
+	}
+	var data map[string]interface{}
+	json.Unmarshal([]byte(content), &data)
+	if data["error"] == true {
+		fmt.Println("FOFA 代理池搜索:", data["errmsg"])
+		return
+	}
+	pools, ok := data["results"].([]interface{})
+	if !ok || len(pools) == 0 {
+		fmt.Println("未发现代理池服务")
+		return
+	}
+	fmt.Printf("=== FOFA 发现 %d 个代理池，开始并发爬取 ===\n", len(pools))
+
+	poolConcurrency := 50 // 并发爬取数
+	sem := make(chan struct{}, poolConcurrency)
+	var poolMu sync.Mutex
+	var poolWg sync.WaitGroup
+	totalProxies := 0
+
+	for idx, pool := range pools {
+		arr, ok := pool.([]interface{})
+		if !ok || len(arr) < 2 {
+			continue
+		}
+		ip, _ := arr[0].(string)
+		port, _ := arr[1].(string)
+
+		poolWg.Add(1)
+		sem <- struct{}{}
+		go func(idx int, ip, port string) {
+			defer poolWg.Done()
+			defer func() { <-sem }()
+
+			// 爬取 /all 接口
+			allURL := "http://" + ip + ":" + port + "/all"
+			body, err := fetchContent(allURL, "GET", 8, nil, nil, "")
+			if err != nil {
+				return
+			}
+
+			var proxies []struct {
+				Proxy      string `json:"proxy"`
+				LastStatus bool   `json:"last_status"`
+			}
+			if err := json.Unmarshal([]byte(body), &proxies); err != nil {
+				return
+			}
+
+			count := 0
+			for _, p := range proxies {
+				if p.LastStatus {
+					for _, proto := range []string{"socks5", "socks4", "http", "https"} {
+						addSocks(proto + "://" + p.Proxy)
+					}
+					count++
+				}
+			}
+			poolMu.Lock()
+			totalProxies += count
+			poolMu.Unlock()
+			if count > 0 {
+				fmt.Printf("[Pool %d/%d] %s:%s → %d 代理\n", idx+1, len(pools), ip, port, count)
+			}
+		}(idx, ip, port)
+	}
+	poolWg.Wait()
+	fmt.Printf("=== 代理池爬取完成，共获取 %d 个代理 ===\n", totalProxies)
+}
+
+// GetProxiesFromURLs 从公开代理列表 URL 获取代理
+func GetProxiesFromURLs(urls []string) {
+	defer Wg.Done()
+	if len(urls) == 0 {
+		return
+	}
+
+	var urlWg sync.WaitGroup
+	sem := make(chan struct{}, 10) // 最多 10 个并发下载
+	totalCollected := 0
+	var totalMu sync.Mutex
+
+	for _, u := range urls {
+		u = strings.TrimSpace(u)
+		if u == "" {
+			continue
+		}
+
+		urlWg.Add(1)
+		sem <- struct{}{}
+		go func(url string) {
+			defer urlWg.Done()
+			defer func() { <-sem }()
+
+			fmt.Printf("***下载代理列表: %s***\n", url)
+			content, err := fetchContent(url, "GET", 30, nil, nil, "")
+			if err != nil {
+				fmt.Printf("  下载失败: %v\n", err)
+				return
+			}
+
+			count := 0
+			for _, line := range strings.Split(content, "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" || strings.HasPrefix(line, "#") {
+					continue
+				}
+
+				if strings.Contains(line, "://") {
+					// 有协议前缀，直接使用
+					addSocks(line)
+					count++
+				} else {
+					// 无协议前缀，生成所有协议变体
+					for _, proto := range []string{"socks5", "socks4", "http", "https"} {
+						addSocks(proto + "://" + line)
+					}
+					count++
+				}
+			}
+			totalMu.Lock()
+			totalCollected += count
+			totalMu.Unlock()
+			fmt.Printf("  %s → %d 个代理\n", url, count)
+		}(u)
+	}
+	urlWg.Wait()
+	fmt.Printf("=== 公开列表下载完成，共获取 %d 个代理 ===\n", totalCollected)
 }
 
 // 从鹰图获取，结果为IP:PORT

@@ -48,13 +48,15 @@ type CheckGeolocateConfig struct {
 }
 
 type FOFAConfig struct {
-	Switch           string   `toml:"switch"`
-	APIURL           string   `toml:"apiUrl"`
-	Email            string   `toml:"email"`
-	Key              string   `toml:"key"`
-	QueryStrings     []string `toml:"queryStrings"`     // SOCKS5 查询语句列表
-	HTTPQueryStrings []string `toml:"httpQueryStrings"` // HTTP 代理查询语句列表
-	ResultSize       int      `toml:"resultSize"`
+	Switch         string   `toml:"switch"`
+	APIURL         string   `toml:"apiUrl"`
+	Email          string   `toml:"email"`
+	Key            string   `toml:"key"`
+	QueryStrings   []string `toml:"queryStrings"`     // SOCKS5 查询语句列表
+	PoolQuery      string   `toml:"poolQueryString"`  // 代理池搜索语句
+	PoolResultSize int      `toml:"poolResultSize"`   // 代理池搜索数量
+	ProxyListURLs  []string `toml:"proxyListUrls"`    // 公开代理列表 URL
+	ResultSize     int      `toml:"resultSize"`
 }
 
 type QUAKEConfig struct {
@@ -162,8 +164,8 @@ func validateAPIConfig(name string, config interface{}, errors *[]string) {
 			if strings.TrimSpace(c.Key) == "" {
 				*errors = append(*errors, fmt.Sprintf("%s.key 不能为空（switch=open）", name))
 			}
-			if len(c.QueryStrings) == 0 && len(c.HTTPQueryStrings) == 0 {
-				*errors = append(*errors, fmt.Sprintf("%s.queryStrings 和 httpQueryStrings 至少需要配置一个（switch=open）", name))
+			if len(c.QueryStrings) == 0 && c.PoolQuery == "" {
+				*errors = append(*errors, fmt.Sprintf("%s.queryStrings 和 poolQueryString 至少需要配置一个（switch=open）", name))
 			}
 			if c.ResultSize < 1 || c.ResultSize > 10000 {
 				*errors = append(*errors, fmt.Sprintf("%s.resultSize 必须在 1-10000 之间，当前值: %d", name, c.ResultSize))

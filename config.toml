@@ -27,7 +27,7 @@ includeKeywords=['中国']#格式如：['中国','北京']则只获取中国北�
 switch = 'open' #open:启用，非open:禁用
 apiUrl='https://fofoapi.com/api/v1/search/all'
 email = 'hsad@qq.com'
-key = '9jz1twi7cucfxf3pdv2e6frm0656bwbx'
+key = '2pve0ooug6kmwwuk0vc2b2io8wa8l7mn'
 # 仅保留查询结果 > 100 条的国家（42/201），经过实际运行筛选，效率提升 ~5x
 # 已排除: CN(中国) HK(香港) MO(澳门)
 queryStrings = [
@@ -82,56 +82,20 @@ queryStrings = [
 ]
 resultSize=10000 #每个查询语句最多返回条数，最大10000，需小于等于FOFA官网web界面看到的结果数量
 
-# HTTP 代理查询（同 42 国），通过常见代理端口 + banner 关键词筛选
-httpQueryStrings = [
-    # === 亚洲 (15) ===
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="JP" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 日本
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="IN" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 印度
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="KR" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 韩国
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="ID" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 印尼
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="IL" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 以色列
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="SG" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 新加坡
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="BH" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 巴林
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="TH" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 泰国
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="AE" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 阿联酋
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="MY" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 马来西亚
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="TR" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 土耳其
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="VN" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 越南
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="TW" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 台湾
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="BD" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 孟加拉国
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="IR" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 伊朗
-    # === 欧洲 (16) ===
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="DE" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 德国
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="FR" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 法国
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="IT" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 意大利
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="GB" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 英国
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="ES" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 西班牙
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="IE" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 爱尔兰
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="CH" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 瑞士
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="SE" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 瑞典
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="NL" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 荷兰
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="PL" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 波兰
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="FI" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 芬兰
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="AT" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 奥地利
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="CZ" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 捷克
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="RO" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 罗马尼亚
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="HU" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 匈牙利
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="UA" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 乌克兰
-    # === 北美洲 (3) ===
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="US" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 美国
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="CA" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 加拿大
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="MX" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 墨西哥
-    # === 南美洲 (5) ===
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="BR" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 巴西
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="AR" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 阿根廷
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="CL" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 智利
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="VE" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 委内瑞拉
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="CO" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 哥伦比亚
-    # === 非洲 (1) ===
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="ZA" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 南非
-    # === 大洋洲 (2) ===
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="AU" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 澳大利亚
-    '(port="8080" || port="3128" || port="8888" || port="9090") && country="NZ" && (banner="proxy" || banner="CONNECT" || banner="squid")',   # 新西兰
+# 代理池搜索：从 FOFA 搜索公开的代理池服务，爬取已维护好的代理
+# 查询 body="get all proxy from proxy pool" 找到代理池 → 请求 /all 获取代理列表
+poolQueryString = 'body="get all proxy from proxy pool"'
+poolResultSize=10000 #从FOFA获取的代理池服务数量
+
+# 公开代理列表 URL（每行一个代理，支持 protocol://IP:PORT 或纯 IP:PORT）
+proxyListUrls = [
+    'https://raw.githubusercontent.com/ProxyScrape/free-proxy-list/refs/heads/main/proxies/all/data.txt',
+    'https://raw.githubusercontent.com/proxifly/free-proxy-list/refs/heads/main/proxies/all/data.txt',
+    'https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text',
+    'https://raw.githubusercontent.com/iplocate/free-proxy-list/refs/heads/main/all-proxies.txt',
+    'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/refs/heads/master/socks4.txt',
+    'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/refs/heads/master/socks5.txt',
+    'https://raw.githubusercontent.com/TheSpeedX/PROXY-List/refs/heads/master/http.txt',
 ]
 
 [QUAKE]

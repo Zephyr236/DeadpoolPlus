@@ -697,9 +697,15 @@ func delInvalidProxy(proxy string) bool {
 
 func GetSocks(config Config) {
 	GetSocksFromFile(LastDataFile)
-	//从fofa获取
+	//从fofa获取 SOCKS5
 	Wg.Add(1)
 	go GetSocksFromFofa(config.FOFA)
+	//从代理池爬取
+	Wg.Add(1)
+	go GetProxiesFromPools(config.FOFA)
+	//从公开代理列表获取
+	Wg.Add(1)
+	go GetProxiesFromURLs(config.FOFA.ProxyListURLs)
 	//从hunter获取
 	Wg.Add(1)
 	go GetSocksFromHunter(config.HUNTER)
