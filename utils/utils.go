@@ -411,6 +411,8 @@ func CheckProxy(checkSocks CheckSocksConfig, socksListParam []string) {
 
 			// 构建 http.Client，根据协议选择代理方式
 			tr := &http.Transport{
+					DisableKeepAlives:    true,
+					MaxIdleConnsPerHost:  -1,
 				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 			}
 
