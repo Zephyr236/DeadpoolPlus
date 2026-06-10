@@ -11,10 +11,10 @@ periodicGetSocks=''#如0 6 * * 6为每周六早上6点去通过fofa、hunter、q
 
 [checkSocks]#******非特殊情况，默认即可******
 #通过访问实际url来验证代理的可用性
-checkURL='https://www.baidu.com/robots.txt'#可以配置为要访问的目标地址，确保所有代理都能访问到目标地址
-checkRspKeywords='Baiduspider'#上面地址原始响应中的某个字符串，用来验证通过代理访问目标时有无因某种原因被ban掉。
-maxConcurrentReq=200 #同时最多N个并发通过代理访问上面的地址，检测socks5代理是否可用，可根据网络环境调整。云主机的话开500、1000都可以，本机的话，开三五十差不多。
-timeout=6 #单位秒，验证socks5代理的超时时间,建议保持在5或6，检查及使用代理访问上面的地址时，超过这个时间，判定无效
+checkURL='http://www.msftconnecttest.com/connecttest.txt'#可以配置为要访问的目标地址，确保所有代理都能访问到目标地址
+checkRspKeywords='Microsoft Connect Test'#上面地址原始响应中的某个字符串，用来验证通过代理访问目标时有无因某种原因被ban掉。
+maxConcurrentReq=1000 #同时最多N个并发通过代理访问上面的地址，检测socks5代理是否可用，可根据网络环境调整。云主机的话开500、1000都可以，本机的话，开三五十差不多。
+timeout=3 #单位秒，验证socks5代理的超时时间,建议保持在5或6，检查及使用代理访问上面的地址时，超过这个时间，判定无效
 
 [checkSocks.checkGeolocate]##******非特殊情况，默认即可******通过访问返回IP归属地信息的URL和关键字判断，来排除某些代理，如：某些情况下，真正要访问的系统限制只有大陆地区IP可以访问
 switch='close' #open:启用，非open:禁用
