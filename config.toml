@@ -96,7 +96,25 @@ proxyListUrls = [
     'https://raw.githubusercontent.com/officialputuid/ProxyForEveryone/refs/heads/main/socks5/socks5.txt',
     'https://raw.githubusercontent.com/adasd223/mass-proxy-list/refs/heads/main/http.txt',
     'https://raw.githubusercontent.com/adasd223/mass-proxy-list/refs/heads/main/socks4.txt',
-    'https://raw.githubusercontent.com/adasd223/mass-proxy-list/refs/heads/main/socks5.txt'
+    'https://raw.githubusercontent.com/adasd223/mass-proxy-list/refs/heads/main/socks5.txt',
+    'https://raw.githubusercontent.com/hookzof/socks5_list/refs/heads/master/proxy.txt',
+    'https://raw.githubusercontent.com/Anonym0usWork1221/Free-Proxies/refs/heads/main/proxy_files/http_proxies.txt',
+    'https://raw.githubusercontent.com/Anonym0usWork1221/Free-Proxies/refs/heads/main/proxy_files/https_proxies.txt',
+    'https://raw.githubusercontent.com/Anonym0usWork1221/Free-Proxies/refs/heads/main/proxy_files/socks4_proxies.txt',
+    'https://raw.githubusercontent.com/Anonym0usWork1221/Free-Proxies/refs/heads/main/proxy_files/socks5_proxies.txt',
+    'https://raw.githubusercontent.com/elliottophellia/proxylist/refs/heads/master/results/pmix_checked.txt',
+    'https://raw.githubusercontent.com/saisuiu/Lionkings-Http-Proxys-Proxies/refs/heads/main/free.txt',
+    'https://raw.githubusercontent.com/saisuiu/Lionkings-Http-Proxys-Proxies/refs/heads/main/cnfree.txt',
+    'https://raw.githubusercontent.com/dpangestuw/Free-Proxy/refs/heads/main/All_proxies.txt',
+    'https://raw.githubusercontent.com/Skillter/ProxyGather/refs/heads/master/proxies/working-proxies-all.txt',
+    'https://raw.githubusercontent.com/zebbern/Proxy-Scraper/refs/heads/main/http.txt',
+    'https://raw.githubusercontent.com/zebbern/Proxy-Scraper/refs/heads/main/https.txt',
+    'https://raw.githubusercontent.com/zebbern/Proxy-Scraper/refs/heads/main/proxydump.txt',
+    'https://raw.githubusercontent.com/zebbern/Proxy-Scraper/refs/heads/main/socks4.txt',
+    'https://github.com/zebbern/Proxy-Scraper/raw/refs/heads/main/socks5.txt',
+    'https://raw.githubusercontent.com/vmheaven/VMHeaven.io-Free-Proxy-List/refs/heads/main/all_proxies.txt',
+    'https://raw.githubusercontent.com/zebbern/Proxy-Scraper/refs/heads/main/socks5.txt'
+
 ]
 
 [QUAKE]
