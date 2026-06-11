@@ -106,7 +106,7 @@ func main() {
 			fmt.Printf(utils.ColorBlue + "\n===代理存活自检 结束===\n\n" + utils.ColorReset)
 		})
 	}
-	//根据配置信息，周期性取本地以及hunter、quake、fofa的数据
+	//根据配置信息，周期性取本地以及fofa的数据
 	periodicGetSocks := strings.TrimSpace(config.Task.PeriodicGetSocks)
 	if periodicGetSocks != "" {
 		cronFlag = true

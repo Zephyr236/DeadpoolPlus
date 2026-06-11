@@ -12,50 +12,6 @@ import (
 	"time"
 )
 
-// 从quake获取，结果为 socks5://IP:PORT
-func GetSocksFromQuake(quake QUAKEConfig) {
-	defer Wg.Done()
-	if quake.Switch != "open" {
-		fmt.Println("---未开启quake---")
-		return
-	}
-	fmt.Printf("***已开启quake,将根据配置条件从quake中获取%d条数据，然后进行有效性检测***\n", quake.ResultSize)
-	jsonCondition := "{\"query\": \"" + strings.Replace(quake.QueryString, `"`, `\"`, -1) + "\",\"latest\":\"True\",\"start\": 0,\"size\": " + strconv.Itoa(quake.ResultSize) + ",\"include\":[\"ip\",\"port\"]}"
-	headers := map[string]string{
-		"X-QuakeToken": quake.Key,
-		"Content-Type": "application/json"}
-	content, err := fetchContent(quake.APIURL, "POST", 60, nil, headers, jsonCondition)
-	if err != nil {
-		fmt.Println("quake异常", err)
-		return
-	}
-	var data map[string]interface{}
-	json.Unmarshal([]byte(content), &data)
-	code, _ := strconv.ParseFloat("0", 64)
-	if data["code"] != code {
-		fmt.Println("QUAKE:", data["message"])
-		return
-	}
-	arr, ok := data["data"].([]interface{})
-	if !ok {
-		fmt.Println("quake: 返回数据格式异常")
-		return
-	}
-	fmt.Println("+++quake数据已取+++")
-	for _, item := range arr {
-		itemMap, ok := item.(map[string]interface{})
-		if !ok {
-			continue
-		}
-		ip, ok1 := itemMap["ip"].(string)
-		port, ok2 := itemMap["port"].(float64)
-		if !ok1 || !ok2 {
-			continue
-		}
-		addSocks("socks5://" + ip + ":" + strconv.FormatFloat(port, 'f', -1, 64))
-	}
-}
-
 // 从FOFA获取，结果为 protocol://IP:PORT
 func GetSocksFromFofa(fofa FOFAConfig) {
 	defer Wg.Done()
@@ -266,79 +222,6 @@ func GetProxiesFromURLs(urls []string) {
 	}
 	urlWg.Wait()
 	fmt.Printf("=== 公开列表下载完成，共获取 %d 个代理 ===\n", totalCollected)
-}
-
-// 从鹰图获取，结果为IP:PORT
-func GetSocksFromHunter(hunter HUNTERConfig) {
-	defer Wg.Done()
-	if hunter.Switch != "open" {
-		fmt.Println("---未开启hunter---")
-		return
-	}
-	fmt.Printf("***已开启hunter,将根据配置条件从hunter中获取%d条数据,然后进行有效性检测***\n", hunter.ResultSize)
-
-	var exeData int //记录处理了几条
-	end := hunter.ResultSize / 100
-	for i := 1; i <= end; i++ {
-		params := map[string]string{
-			"api-key":   hunter.Key,
-			"search":    base64.URLEncoding.EncodeToString([]byte(hunter.QueryString)),
-			"page":      strconv.Itoa(i),
-			"page_size": "100"}
-		fmt.Printf("HUNTER:每页100条,正在查询第%v页\n", i)
-		content, err := fetchContent(hunter.APIURL, "GET", 60, params, nil, "")
-		if err != nil {
-			fmt.Println("访问hunter异常", err)
-			return
-		}
-		var data map[string]interface{}
-		json.Unmarshal([]byte(content), &data)
-		code, _ := strconv.ParseFloat("200", 64)
-		if data["code"] != code {
-			fmt.Println("HUNTER:", data["message"])
-			return
-		}
-
-		rsData, ok := data["data"].(map[string]interface{})
-		if !ok {
-			fmt.Println("HUNTER: 返回数据格式异常")
-			return
-		}
-		total, ok := rsData["total"].(float64)
-		if !ok {
-			fmt.Println("HUNTER: 返回total字段格式异常")
-			break
-		}
-		if total == 0 {
-			fmt.Println("HUNTER:xxx根据配置语法,未取到数据xxx")
-			break
-		}
-		arr, ok := rsData["arr"].([]interface{})
-		if !ok {
-			fmt.Println("HUNTER: 返回arr字段格式异常")
-			break
-		}
-		for _, item := range arr {
-			itemMap, ok := item.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			ip, ok1 := itemMap["ip"].(string)
-			port, ok2 := itemMap["port"].(float64)
-			if !ok1 || !ok2 {
-				continue
-			}
-			exeData++
-			addSocks("socks5://" + ip + ":" + strconv.FormatFloat(port, 'f', -1, 64))
-		}
-		if float64(exeData) >= total {
-			break
-		}
-		if end > 1 && i != end {
-			time.Sleep(3 * time.Second) //防止hunter提示访问过快获取不到结果
-		}
-	}
-	fmt.Println("+++hunter数据已取+++")
 }
 
 // 从本地文件获取，格式为 protocol://IP:PORT（如 socks5://1.2.3.4:1080、http://5.6.7.8:8080）

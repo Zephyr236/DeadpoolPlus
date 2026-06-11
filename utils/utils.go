@@ -708,12 +708,6 @@ func GetSocks(config Config) {
 	//从公开代理列表获取
 	Wg.Add(1)
 	go GetProxiesFromURLs(config.FOFA.ProxyListURLs)
-	//从hunter获取
-	Wg.Add(1)
-	go GetSocksFromHunter(config.HUNTER)
-	//从quake中取
-	Wg.Add(1)
-	go GetSocksFromQuake(config.QUAKE)
 	Wg.Wait()
 	//去重（同一 IP:PORT 不同协议视为不同代理）
 	RemoveDuplicates(&SocksList)

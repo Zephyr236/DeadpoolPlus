@@ -121,16 +121,3 @@ proxyListUrls = [
 
 ]
 
-[QUAKE]
-switch = 'close'
-apiUrl='https://quake.360.net/api/v3/search/quake_service'
-key = '96*****36-*****-40c4-*****-5ef*****90b0a'
-queryString = 'service:socks5  AND country: "CN" AND response:"No authentication"'
-resultSize=500 #此处最大为10000,需小于等于从官网web界面看到的结果数量
-
-[HUNTER]
-switch = 'close'
-apiUrl='https://hunter.qianxin.com/openApi/search'
-key = '9c1698e0*****90758edc2******533f9*******048***ce18'
-queryString = 'protocol=="socks5"&&protocol.banner="No authentication"&&ip.country="CN"'
-resultSize=200 #最小为100,按100条/每页翻页，最大值需小于从官网web界面看到的结果数量，值需为100的整倍数，如200、300、1000、2000等

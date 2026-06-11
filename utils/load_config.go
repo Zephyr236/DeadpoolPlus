@@ -14,8 +14,6 @@ type Config struct {
 	Task       TaskConfig       `toml:"task"`
 	CheckSocks CheckSocksConfig `toml:"checkSocks"`
 	FOFA       FOFAConfig       `toml:"FOFA"`
-	QUAKE      QUAKEConfig      `toml:"QUAKE"`
-	HUNTER     HUNTERConfig     `toml:"HUNTER"`
 }
 
 type ListenerConfig struct {
@@ -57,22 +55,6 @@ type FOFAConfig struct {
 	PoolResultSize int      `toml:"poolResultSize"`   // 代理池搜索数量
 	ProxyListURLs  []string `toml:"proxyListUrls"`    // 公开代理列表 URL
 	ResultSize     int      `toml:"resultSize"`
-}
-
-type QUAKEConfig struct {
-	Switch      string `toml:"switch"`
-	APIURL      string `toml:"apiUrl"`
-	Key         string `toml:"key"`
-	QueryString string `toml:"queryString"`
-	ResultSize  int    `toml:"resultSize"`
-}
-
-type HUNTERConfig struct {
-	Switch      string `toml:"switch"`
-	APIURL      string `toml:"apiUrl"`
-	Key         string `toml:"key"`
-	QueryString string `toml:"queryString"`
-	ResultSize  int    `toml:"resultSize"`
 }
 
 func LoadConfig(path string) (Config, error) {
@@ -146,8 +128,6 @@ func ValidateConfig(config Config) []string {
 
 	// 7. 验证 API 配置（如果开启）
 	validateAPIConfig("FOFA", config.FOFA, &errors)
-	validateAPIConfig("QUAKE", config.QUAKE, &errors)
-	validateAPIConfig("HUNTER", config.HUNTER, &errors)
 
 	return errors
 }
@@ -169,26 +149,6 @@ func validateAPIConfig(name string, config interface{}, errors *[]string) {
 			}
 			if c.ResultSize < 1 || c.ResultSize > 10000 {
 				*errors = append(*errors, fmt.Sprintf("%s.resultSize 必须在 1-10000 之间，当前值: %d", name, c.ResultSize))
-			}
-		}
-	case "QUAKE":
-		c := config.(QUAKEConfig)
-		if strings.TrimSpace(c.Switch) == "open" {
-			if strings.TrimSpace(c.Key) == "" {
-				*errors = append(*errors, fmt.Sprintf("%s.key 不能为空（switch=open）", name))
-			}
-			if c.ResultSize < 1 || c.ResultSize > 10000 {
-				*errors = append(*errors, fmt.Sprintf("%s.resultSize 必须在 1-10000 之间，当前值: %d", name, c.ResultSize))
-			}
-		}
-	case "HUNTER":
-		c := config.(HUNTERConfig)
-		if strings.TrimSpace(c.Switch) == "open" {
-			if strings.TrimSpace(c.Key) == "" {
-				*errors = append(*errors, fmt.Sprintf("%s.key 不能为空（switch=open）", name))
-			}
-			if c.ResultSize < 100 || c.ResultSize%100 != 0 {
-				*errors = append(*errors, fmt.Sprintf("%s.resultSize 必须是 100 的倍数，当前值: %d", name, c.ResultSize))
 			}
 		}
 	}
