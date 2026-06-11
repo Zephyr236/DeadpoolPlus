@@ -512,19 +512,65 @@ func CheckProxy(checkSocks CheckSocksConfig, socksListParam []string) {
 	}
 	Wg.Wait()
 	mu.Lock()
-	EffectiveList = make([]string, len(tmpEffectiveList))
-	copy(EffectiveList, tmpEffectiveList)
+	if len(EffectiveList) == 0 {
+		// 首次检测，全量替换
+		EffectiveList = make([]string, len(tmpEffectiveList))
+		copy(EffectiveList, tmpEffectiveList)
+	} else {
+		// 增量追加（后台检测模式），避免重复
+	Existing:
+		for _, newProxy := range tmpEffectiveList {
+			for _, existing := range EffectiveList {
+				if newProxy == existing {
+					continue Existing
+				}
+			}
+			EffectiveList = append(EffectiveList, newProxy)
+		}
+	}
 	if len(tmpEffectiveList) > 0 {
-		proxyIndex = rand.Intn(len(tmpEffectiveList))
+		proxyIndex = rand.Intn(len(EffectiveList))
 	}
 	mu.Unlock()
-	// 初始化/更新代理统计信息
+	// 更新代理统计信息
 	InitProxyStats(EffectiveList)
 	sec := int(time.Since(startTime).Seconds())
 	if sec == 0 {
 		sec = 1
 	}
-	fmt.Printf(ColorGreen+"\n根据配置规则检测完成,用时 [ %vs ] ,共发现 [ %v ] 个可用\n"+ColorReset, sec, len(tmpEffectiveList))
+	fmt.Printf(ColorGreen+"\n根据配置规则检测完成,用时 [ %vs ] ,共发现 [ %v ] 个可用 (当前池: %d)\n"+ColorReset, sec, len(tmpEffectiveList), len(EffectiveList))
+}
+
+// InitEffectiveFromFile 从 lastData.txt 直接加载已验证代理到有效池
+func InitEffectiveFromFile(filename string) int {
+	file, err := os.Open(filename)
+	if err != nil {
+		return 0
+	}
+	defer file.Close()
+
+	var proxies []string
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line != "" {
+			proxies = append(proxies, line)
+		}
+	}
+	if len(proxies) == 0 {
+		return 0
+	}
+
+	mu.Lock()
+	EffectiveList = append(EffectiveList, proxies...)
+	if len(EffectiveList) > 0 {
+		proxyIndex = rand.Intn(len(EffectiveList))
+	}
+	// InitProxyStats 内部也会 Lock mu，必须在释放锁后调用
+	mu.Unlock()
+
+	InitProxyStats(EffectiveList)
+	return len(proxies)
 }
 
 func WriteLinesToFile() error {

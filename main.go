@@ -77,21 +77,43 @@ func main() {
 		fmt.Print(utils.ColorCyan + "***debug模式: 每个请求的代理信息会打印到命令行***\n" + utils.ColorReset + "\n")
 	}
 	fmt.Print(utils.ColorYellow + "***直接使用fmt打印信息，基本上是打印异常的信息***\n" + utils.ColorReset + "\n")
-	if lastDataPath == utils.LastDataFile {
-		// 未指定自定义lastdata路径时，从网络空间获取代理
-		utils.GetSocks(config)
-	}
-
-	if len(utils.SocksList) == 0 {
-		fmt.Print(utils.ColorRed + "未发现代理数据,请调整配置信息,或向" + utils.LastDataFile + "中直接写入IP:PORT格式的socks5代理\n程序退出" + utils.ColorReset + "\n")
-		os.Exit(1)
-	}
-	fmt.Printf(utils.ColorCyan+"根据IP:PORT去重后，共发现%v个代理\n检测可用性中......\n"+utils.ColorReset, len(utils.SocksList))
-
-	//开始检测代理存活性
 
 	utils.Timeout = config.CheckSocks.Timeout
-	utils.CheckProxy(config.CheckSocks, utils.SocksList)
+
+	// 快速启动：如果 lastData.txt 存在，直接加载已验证代理，立即启动 SOCKS5 服务
+	// 新代理的采集和检测在后台异步进行
+	quickStart := false
+	existingCount := utils.InitEffectiveFromFile(utils.LastDataFile)
+	if existingCount > 0 {
+		quickStart = true
+		fmt.Printf(utils.ColorGreen+"从 %s 加载了 %d 个已验证代理，立即启动服务\n"+utils.ColorReset, utils.LastDataFile, existingCount)
+	}
+
+	if !quickStart {
+		// 传统模式：先采集+检测所有代理，再启动服务
+		if lastDataPath == utils.LastDataFile {
+			utils.GetSocks(config)
+		}
+		if len(utils.SocksList) == 0 {
+			fmt.Print(utils.ColorRed + "未发现代理数据,请调整配置信息,或向" + utils.LastDataFile + "中直接写入IP:PORT格式的代理\n程序退出" + utils.ColorReset + "\n")
+			os.Exit(1)
+		}
+		fmt.Printf(utils.ColorCyan+"根据IP:PORT去重后，共发现%v个代理\n检测可用性中......\n"+utils.ColorReset, len(utils.SocksList))
+		utils.CheckProxy(config.CheckSocks, utils.SocksList)
+	} else {
+		// 快速启动模式：后台采集+检测新代理，服务立即可用
+		if lastDataPath == utils.LastDataFile {
+			go func() {
+				utils.GetSocks(config)
+				if len(utils.SocksList) > 0 {
+					fmt.Printf(utils.ColorCyan+"\n根据IP:PORT去重后，共发现%v个新代理，后台检测中...\n"+utils.ColorReset, len(utils.SocksList))
+					utils.CheckProxy(config.CheckSocks, utils.SocksList)
+					utils.WriteLinesToFile()
+					fmt.Print(utils.ColorGreen + "\n*** 后台代理检测完成，有效代理池已更新 ***\n" + utils.ColorReset)
+				}
+			}()
+		}
+	}
 	//根据配置，定时检测内存中的代理存活信息
 	cron := cron.New()
 	periodicChecking := strings.TrimSpace(config.Task.PeriodicChecking)
@@ -133,7 +155,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	utils.WriteLinesToFile() //存活代理写入硬盘，以备下次启动直接读取
+	utils.WriteLinesToFile() //有效代理写入硬盘，以备下次启动直接读取
 
 	// 开启监听
 	conf := &socks5.Config{
