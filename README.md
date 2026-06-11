@@ -192,6 +192,48 @@ DeadpoolPlus 支持四种上游代理协议：
 
 ---
 
+## 快速启动模式
+
+如果有 `lastData.txt`（上次运行保存的有效代理），程序会**直接加载并立即启动 SOCKS5 服务**，FOFA 采集和新代理检测在后台异步进行。
+
+```
+# 首次运行（无 lastData.txt）
+./deadpoolplus                    # 采集 → 检测 → 启动服务（等待 ~1-2 分钟）
+
+# 后续运行（有 lastData.txt）
+./deadpoolplus                    # 秒级启动！后台自动补充新代理
+```
+
+---
+
+## 命令行参数
+
+| 参数 | 说明 |
+|---|---|
+| `-c, --config <path>` | 指定配置文件路径（默认 config.toml） |
+| `-l, --lastdata <path>` | 指定 lastdata 文件路径 |
+| `--collect-only` | 仅采集+检测代理后退出，不启动 SOCKS5 服务（适用于定时任务） |
+| `-h, --help` | 显示帮助信息 |
+
+```bash
+# CI/定时任务模式：采完即退
+./deadpoolplus --collect-only
+```
+
+---
+
+## GitHub Actions 定时采集
+
+项目已内置 CI 工作流 `.github/workflows/collect-proxies.yml`，每 6 小时自动采集代理并提交 `lastData.txt`。
+
+**部署步骤：**
+1. Fork/Import 本仓库（**设为 Private**）
+2. Settings → Actions → General → 勾选 Read and write permissions
+3. Settings → Secrets → Actions → 添加 `FOFA_KEY`
+4. Actions 标签页手动触发或等待定时执行
+
+---
+
 ## 编译
 
 ```bash
