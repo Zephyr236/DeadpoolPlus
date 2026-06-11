@@ -6,25 +6,6 @@ DeadpoolPlus 是一个多源、多协议的 SOCKS5 代理池工具，受 [Deadpo
 
 > 🚀 **一句话：** 自动从全网搜集代理 → 多协议死/活检测 → 本地 SOCKS5 服务 → 工具接入即用
 
----
-
-## 与 Deadpool 的区别
-
-| | Deadpool | DeadpoolPlus |
-|---|---|---|
-| **代理协议** | SOCKS5 | SOCKS5 + SOCKS4 + HTTP + HTTPS |
-| **数据源** | FOFA/Hunter/Quake | FOFA + 代理池爬取 + 公开列表(30+ URL) |
-| **健康检测** | HTTPS + 百度 | HTTP(msftconnecttest) + 可配 URL/关键字 |
-| **并发** | 200 | **1000** (可配) |
-| **超时** | 6s | **3s** (可配) |
-| **代理格式** | IP:PORT | `protocol://IP:PORT` |
-| **统计面板** | 无 | ✅ 按 `s` 查看，支持文件触发 |
-| **代理池爬取** | 无 | ✅ FOFA 搜索 → 并发爬取 `/all` |
-| **公开列表** | 无 | ✅ 30+ GitHub/API 源批量下载 |
-| **智能协议探测** | 无 | ✅ 纯 IP:PORT → 四协议变体 → 自动筛选 |
-
----
-
 ## 快速开始
 
 ### 1. 配置
