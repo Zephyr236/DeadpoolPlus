@@ -64,6 +64,20 @@ DeadpoolPlus_windows_amd64.exe
 | 创建 `.dump_stats` 文件 | 后台运行时触发统计输出 |
 | `Ctrl+C` | 优雅退出 |
 
+### 5. 首次运行（无 lastData.txt）
+
+如果没有 `lastData.txt`，第一次运行程序会从零开始采集代理（耗时 1-2 分钟）。若不想等待，可从仓库直接下载 GitHub Actions 定时采集好的文件：
+
+```bash
+# 从仓库下载最新的 lastData.txt
+curl -O https://raw.githubusercontent.com/Zephyr236/DeadpoolPlus/main/lastData.txt
+
+# 启动即可秒级就绪
+./DeadpoolPlus_linux_amd64
+```
+
+> 前提：仓库已配置 GitHub Actions 定时采集（见下方章节），产出 `lastData.txt` 并自动提交到仓库。
+
 ---
 
 ## 代理数据流
