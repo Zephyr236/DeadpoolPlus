@@ -85,9 +85,10 @@ func main() {
 
 	// 快速启动：如果 lastData.txt 存在，直接加载已验证代理，立即启动 SOCKS5 服务
 	// 新代理的采集和检测在后台异步进行
+	// 但 --collect-only 模式下不使用快速启动，需阻塞等所有检测完成再写入
 	quickStart := false
 	existingCount := utils.InitEffectiveFromFile(utils.LastDataFile)
-	if existingCount > 0 {
+	if existingCount > 0 && !collectOnly {
 		quickStart = true
 		fmt.Printf(utils.ColorGreen+"从 %s 加载了 %d 个已验证代理，立即启动服务\n"+utils.ColorReset, utils.LastDataFile, existingCount)
 	}
