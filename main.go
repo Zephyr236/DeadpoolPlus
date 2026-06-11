@@ -25,6 +25,7 @@ func main() {
 	configPath := "config.toml"
 	lastDataPath := utils.LastDataFile
 	help := false
+	collectOnly := false
 
 	for i := 1; i < len(os.Args); i++ {
 		arg := os.Args[i]
@@ -41,6 +42,8 @@ func main() {
 				utils.LastDataFile = lastDataPath
 				i++
 			}
+		} else if arg == "--collect-only" {
+			collectOnly = true
 		}
 	}
 
@@ -49,7 +52,7 @@ func main() {
 		fmt.Println(utils.ColorCyan + "  -h, --help          显示此帮助信息" + utils.ColorReset)
 		fmt.Println(utils.ColorCyan + "  -c, --config <path> 指定配置文件路径 (默认: config.toml)" + utils.ColorReset)
 		fmt.Println(utils.ColorCyan + "  -l, --lastdata <path> 指定lastdata文件路径 (默认: lastData.txt)" + utils.ColorReset)
-		fmt.Println(utils.ColorCyan + "                      使用此选项时，不会重新从网络空间获取代理" + utils.ColorReset)
+		fmt.Println(utils.ColorCyan + "  --collect-only       仅采集+检测代理后退出，不启动SOCKS5服务" + utils.ColorReset)
 		os.Exit(0)
 	}
 
@@ -156,6 +159,11 @@ func main() {
 	}
 
 	utils.WriteLinesToFile() //有效代理写入硬盘，以备下次启动直接读取
+
+	if collectOnly {
+		fmt.Printf(utils.ColorGreen+"采集完成！%d 个可用代理已保存至 %s\n"+utils.ColorReset, len(utils.EffectiveList), utils.LastDataFile)
+		return
+	}
 
 	// 开启监听
 	conf := &socks5.Config{

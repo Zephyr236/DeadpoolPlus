@@ -1,13 +1,14 @@
 name: Collect Proxies
 
 on:
-  workflow_dispatch:          # 手动触发
+  workflow_dispatch:
   schedule:
-    - cron: "0 */6 * * *"    # 每6小时自动运行
+    - cron: "0 */6 * * *"
 
 jobs:
   collect:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -22,12 +23,10 @@ jobs:
 
       - name: Collect Proxies
         run: |
-          # 写入 CI 配置（用 secrets 替换 key）
           sed "s/your-fofa-key/${{ secrets.FOFA_KEY }}/" config.toml > config_ci.toml
-          # 编译运行
           go build -ldflags="-s -w" -o deadpool main.go
-          timeout --preserve-status 1500 ./deadpool -c config_ci.toml || true
-          echo "Collection finished, proxies found: $(wc -l < lastData.txt 2>/dev/null || echo 0)"
+          ./deadpool -c config_ci.toml --collect-only
+          echo "Collection done, proxies: $(wc -l < lastData.txt 2>/dev/null || echo 0)"
 
       - name: Commit and Push
         run: |
