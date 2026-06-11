@@ -32,10 +32,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if ! git diff --quiet lastData.txt; then
+          if [ -s lastData.txt ]; then
             git add lastData.txt
-            git commit -m "chore: update proxy list [skip ci] ($(date +%Y-%m-%d))"
+            git commit -m "chore: update proxy list [skip ci] ($(date +%Y-%m-%d))" || echo "no changes"
             git push
           else
-            echo "lastData.txt unchanged, skip commit"
+            echo "lastData.txt is empty or missing, skip commit"
           fi
