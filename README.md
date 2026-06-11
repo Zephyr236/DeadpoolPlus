@@ -1,5 +1,3 @@
-<img src="images/deadpool.png" style="zoom:30%;transform: scale(0.3);" width="35%" height="35%"/>
-
 # DeadpoolPlus — 全球多协议代理池
 
 DeadpoolPlus 是一个多源、多协议的 SOCKS5 代理池工具，受 [Deadpool](https://github.com/thinkoaa/Deadpool) 启发并大幅增强。可从 **FOFA 空间测绘**、**公开代理池服务**、**GitHub/API 公开列表** 等多种渠道自动化采集代理，支持 **SOCKS5 / SOCKS4 / HTTP / HTTPS** 四种协议，经存活检测后汇聚成本地 SOCKS5 代理池，供 Burp Suite、Proxifier、SwitchyOmega 等工具轮询切换出口 IP。
