@@ -1,3 +1,5 @@
+
+
 # DeadpoolPlus — 全球多协议代理池
 
 DeadpoolPlus 是一个多源、多协议的 SOCKS5 代理池工具，受 [Deadpool](https://github.com/thinkoaa/Deadpool) 启发并大幅增强。可从 **FOFA 空间测绘**、**公开代理池服务**、**GitHub/API 公开列表** 等多种渠道自动化采集代理，支持 **SOCKS5 / SOCKS4 / HTTP / HTTPS** 四种协议，经存活检测后汇聚成本地 SOCKS5 代理池，供 Burp Suite、Proxifier、SwitchyOmega 等工具轮询切换出口 IP。
@@ -217,7 +219,7 @@ DeadpoolPlus 支持四种上游代理协议：
 
 ## GitHub Actions 定时采集
 
-项目已内置 CI 工作流 `.github/workflows/collect-proxies.yml`，每 6 小时自动采集代理并提交 `lastData.txt`。
+项目已内置 CI 工作流 `.github/workflows/collect-proxies.yml`，每小时自动采集代理并提交 `lastData.txt`。
 
 **部署步骤：**
 1. Fork/Import 本仓库（**设为 Private**）
